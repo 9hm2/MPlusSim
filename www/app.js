@@ -333,13 +333,31 @@
       if (a.dmg) {
         const CAT = { tank: 'Tankbuster', group: 'Csapat-AoE', soak: 'Soak (szétosztva)', nuke: 'Célzott ütés', dot: 'DoT – ha nem kickelik/dispelik', avoid: 'Elkerülhető (1 találat)' };
         const cell = v => `<td class="${v >= 1 ? 'bad' : v >= 0.8 ? 'warn' : v >= 0.5 ? 'warn' : ''}">${Math.round(v * 100)}%</td>`;
-        h += `<h3>Túlélés (a célpont HP-jának %-a)</h3><p class="note">Becsült HP és páncél ilvl alapján, defenzív nélkül. A sebzés Wowhead tooltip-értékekből jön – logból ellenőrizendő.</p>`;
-        for (const c of Object.keys(CAT)) {
-          const rows = a.dmg.filter(x => x.cat === c).sort((x, y) => y.v[y.v.length - 1] - x.v[x.v.length - 1]);
-          if (!rows.length) continue;
-          h += `<h3>${CAT[c]}</h3><div class="scroll"><table><thead><tr><th class="l">Képesség</th>${levels.map(L => `<th>+${L}</th>`).join('')}</tr></thead><tbody>` +
-            rows.map(x => `<tr><td class="l">${esc(x.name)}<div class="sub">${esc(x.src)} → ${esc(x.tgt)}</div></td>${x.v.map(cell).join('')}</tr>`).join('') + '</tbody></table></div>';
-        }
+        const who = [...new Set(a.dmg.flatMap(x => Object.keys(x.per)))];
+        h += `<h3>Túlélés (a célpont HP-jának %-a)</h3><p class="note">Becsült HP és páncél ilvl alapján, defenzív nélkül. A sebzés Wowhead tooltip-értékekből jön – logból ellenőrizendő.
+          Alapból a legkisebb HP-jú nem-tank tagra számol (legrosszabb eset); a tankbustereket mindig a tankra.</p>
+          <label for="dmgWho">Célpont</label><select id="dmgWho"><option value="">Legsérülékenyebb (legrosszabb eset)</option>${who.map(n => `<option>${esc(n)}</option>`).join('')}<option value="*">Mindenki egyszerre (+${levels[levels.length - 1]})</option></select>
+          <div id="dmgTables"></div>`;
+        const drawDmg = sel => {
+          let t = '';
+          for (const c of Object.keys(CAT)) {
+            let rows = a.dmg.filter(x => x.cat === c);
+            if (!rows.length) continue;
+            if (sel === '*') {
+              const ns = Object.keys(rows[0].per).length > 1 ? who : Object.keys(rows[0].per);
+              rows = rows.sort((x, y) => Math.max(...Object.values(y.per).map(v => v[v.length - 1])) - Math.max(...Object.values(x.per).map(v => v[v.length - 1])));
+              t += `<h3>${CAT[c]}</h3><div class="scroll"><table><thead><tr><th class="l">Képesség</th>${ns.map(n => `<th>${esc(n)}</th>`).join('')}</tr></thead><tbody>` +
+                rows.map(x => `<tr><td class="l">${esc(x.name)}<div class="sub">${esc(x.src)}</div></td>${ns.map(n => x.per[n] ? cell(x.per[n][x.per[n].length - 1]) : '<td>–</td>').join('')}</tr>`).join('') + '</tbody></table></div>';
+              continue;
+            }
+            const pick = x => sel && x.per[sel] ? [sel, x.per[sel]] : [x.tgt, x.v];
+            rows = rows.sort((x, y) => { const a1 = pick(x)[1], b1 = pick(y)[1]; return b1[b1.length - 1] - a1[a1.length - 1]; });
+            t += `<h3>${CAT[c]}</h3><div class="scroll"><table><thead><tr><th class="l">Képesség</th>${levels.map(L => `<th>+${L}</th>`).join('')}</tr></thead><tbody>` +
+              rows.map(x => { const [n, v] = pick(x); return `<tr><td class="l">${esc(x.name)}<div class="sub">${esc(x.src)} → ${esc(n)}</div></td>${v.map(cell).join('')}</tr>`; }).join('') + '</tbody></table></div>';
+          }
+          return t;
+        };
+        setTimeout(() => { const s2 = $('#dmgWho'); if (!s2) return; const go = () => { $('#dmgTables').innerHTML = drawDmg(s2.value); }; s2.onchange = go; go(); });
       } else h += `<p class="note">Ehhez a dungeonhoz még nincs sebzés-adatbázis (jelenleg: Temple of Sethraliss). A kick/dispel/CC audit így is működik.</p>`;
       out.innerHTML = h;
     } catch (e) { out.innerHTML = `<p class="err">${esc(e.message)}</p>`; }

@@ -465,12 +465,14 @@
         if (!raw) continue;
         const tgt = sp.cat === 'tank' ? tank : squish; if (!tgt) continue;
         const k = sp.name + '|' + owner[sid]; if (keys.has(k)) continue; keys.add(k);
-        const v = levels.map(L => {
-          let x = raw * dmgMult(L, !!bossOf[sid]) * (1 - tgt.def.vers);
-          if (sp.school === 'phys') x *= 1 - tgt.def.armor / (tgt.def.armor + MODEL.armorK);
-          return x / tgt.def.hp;
+        const vOf = t => levels.map(L => {
+          let x = raw * dmgMult(L, !!bossOf[sid]) * (1 - t.def.vers);
+          if (sp.school === 'phys') x *= 1 - t.def.armor / (t.def.armor + MODEL.armorK);
+          return x / t.def.hp;
         });
-        rows.push({ cat: sp.cat, name: sp.name, src: owner[sid], tgt: tgt.name, v, dot: sp.dot });
+        // minden lehetséges célpontra (tankbuster: csak a tank); alapnézet: a legsérülékenyebb nem-tank
+        const per = {}; for (const t of (sp.cat === 'tank' ? [tank] : members)) per[t.name] = vOf(t);
+        rows.push({ cat: sp.cat, name: sp.name, src: owner[sid], tgt: tgt.name, v: per[tgt.name], per, dot: sp.dot });
       }
       dmg = rows;
     }
