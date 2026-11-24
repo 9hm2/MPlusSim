@@ -92,7 +92,22 @@
 
   const vals = o => Array.isArray(o) ? o : Object.values(o || {});
 
+  // Esemény-/díszletmobok kezelése: 0 count, nem boss, de óriási HP (pl. Murder Row "Infernal" 203M).
+  //  > 2.5× a legnagyobb boss → kihagyjuk;  > 2× a legnagyobb trash, de bossnyi → bossként kezeljük.
+  function sanitize(d) {
+    if (d._san) return d;
+    const E = Object.values(d.enemies);
+    const mx = Math.max(1, ...E.filter(e => !e.b && e.c > 0).map(e => e.h)), mb = Math.max(1, ...E.filter(e => e.b).map(e => e.h));
+    d.skipped = [];
+    for (const e of E) if (!e.b && e.c === 0 && e.h > 2 * mx) {
+      if (e.h > 2.5 * mb) { e.skip = true; d.skipped.push(e.n); } else e.b = 1;
+    }
+    d._san = true;
+    return d;
+  }
+
   function buildPulls(route, dungeon) {
+    sanitize(dungeon);
     const E = dungeon.enemies, notes = [], used = new Set();
     for (const o of route.objects || []) {
       const d = o && o.d;
@@ -105,6 +120,7 @@
         if (k === 'color' || !E[k]) continue;
         for (const c of vals(cl)) {
           used.add(k + ':' + Math.round(c));
+          if (E[k].skip) continue;
           mobs.push(E[k]);
           const pos = E[k].cl[String(Math.round(c))];
           if (pos) pts.push(pos);
@@ -425,8 +441,10 @@
   //   u   = játékos-hatékonyság (log), 0 = átlagos         – ridge-regresszió, sok futásból
   //   maradék: log(T / T_pred) = γ·nyomás + ε             – nyomás = kulcs − a csapat legjobb időben futott kulcsa
   function refPulls(dungeon) {
+    sanitize(dungeon);
     const E = dungeon.enemies, packs = {}, bosses = {};
     for (const [k, e] of Object.entries(E)) {
+      if (e.skip) continue;
       for (const ci of Object.keys(e.cl)) {
         const g = e.g && e.g[ci];
         if (e.b) { (bosses[g != null ? 'g' + g : k] = bosses[g != null ? 'g' + g : k] || []).push(e); continue; }

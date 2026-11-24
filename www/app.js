@@ -178,7 +178,7 @@
       routes.push({ id: Date.now(), name, idx, dungeon: d.name, str, pulls: pulls.length, count: pulls.reduce((a, p) => a + p.count, 0), total: d.total });
       store.set('routes', routes);
       $('#mdtIn').value = ''; $('#routeName').value = '';
-      msg.innerHTML = `<p class="ok">Importálva: ${esc(d.name)} – ${esc(name)} (${pulls.length} pull)</p>`;
+      msg.innerHTML = `<p class="ok">Importálva: ${esc(d.name)} – ${esc(name)} (${pulls.length} pull)</p>` + (d.skipped && d.skipped.length ? `<p class="note">Kihagyva mint eseménymob (nem kell megölni): ${esc(d.skipped.join(', '))}</p>` : '');
       renderRoutes();
     } catch (e) { msg.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
