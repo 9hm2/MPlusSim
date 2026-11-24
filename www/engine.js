@@ -90,6 +90,51 @@
     return cborDecode(pako.inflateRaw(raw));
   }
 
+  // ---- MDT export: CBOR (a WoW C_EncodingUtil.SerializeCBOR párja) → raw deflate → base64
+  function utf8Bytes(str) {
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+    const e = unescape(encodeURIComponent(str)), u = new Uint8Array(e.length); for (let i = 0; i < e.length; i++) u[i] = e.charCodeAt(i); return u;
+  }
+  function cborEncode(v) {
+    const out = [];
+    const head = (mt, n) => {
+      if (n < 24) out.push((mt << 5) | n);
+      else if (n < 256) out.push((mt << 5) | 24, n);
+      else if (n < 65536) out.push((mt << 5) | 25, n >> 8, n & 255);
+      else if (n < 4294967296) out.push((mt << 5) | 26, (n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255);
+      else { const hi = Math.floor(n / 4294967296), lo = n >>> 0; out.push((mt << 5) | 27, (hi >>> 24) & 255, (hi >>> 16) & 255, (hi >>> 8) & 255, hi & 255, (lo >>> 24) & 255, (lo >>> 16) & 255, (lo >>> 8) & 255, lo & 255); }
+    };
+    const num = n => {
+      if (Number.isInteger(n) && Math.abs(n) < 2 ** 53) { if (n >= 0) head(0, n); else head(1, -1 - n); return; }
+      const b = new DataView(new ArrayBuffer(8)); b.setFloat64(0, n); out.push(0xfb); for (let i = 0; i < 8; i++) out.push(b.getUint8(i));
+    };
+    const str = t => { const u = utf8Bytes(t); head(2, u.length); for (const x of u) out.push(x); };   // Lua-string = bájtsor (a WoW is 2-es típussal írja)
+    const key = k => (/^-?\d+$/.test(k) && Math.abs(+k) < 2 ** 53 ? num(+k) : str(k));    // Lua-tábla számkulcsai számként
+    function item(x) {
+      if (x === true) out.push(0xf5); else if (x === false) out.push(0xf4);
+      else if (typeof x === 'number') num(x);
+      else if (typeof x === 'string') str(x);
+      else if (Array.isArray(x)) { head(4, x.length); x.forEach(item); }
+      else if (x && typeof x === 'object') {
+        const ks = Object.keys(x).filter(k => x[k] != null);               // nil értékek kimaradnak
+        head(5, ks.length); for (const k of ks) { key(k); item(x[k]); }
+      } else out.push(0xf6);
+    }
+    item(v);
+    return new Uint8Array(out);
+  }
+  function bytesToB64(u) {
+    if (typeof btoa === 'function') { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+    return Buffer.from(u).toString('base64');
+  }
+  function encodeRoute(preset) { return '!~MDT2~' + bytesToB64(pako.deflateRaw(cborEncode(preset), { level: 9 })); }
+  const PULL_COLORS = ['ff3eff', '3ef5ff', 'ffd23e', '5cff3e', 'ff7a3e', '9b6bff', '3e8cff', 'ff3e6b', 'c8ff3e', '3effa9'];
+  function newUid() { const c = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; let s = ''; for (let i = 0; i < 11; i++) s += c[Math.floor(Math.random() * c.length)]; return s; }
+  function newPreset(idx, name) {
+    return { text: name || 'Új route', week: 1, difficulty: 10, uid: newUid(), objects: [],
+      value: { currentDungeonIdx: +idx, currentPull: 1, currentSublevel: 1, teeming: false, selection: [], riftOffsets: [], enemyAssignments: [], pulls: [{ color: PULL_COLORS[0] }] } };
+  }
+
   const vals = o => Array.isArray(o) ? o : Object.values(o || {});
 
   // Esemény-/díszletmobok kezelése: 0 count, nem boss, de óriási HP (pl. Murder Row "Infernal" 203M).
@@ -591,6 +636,6 @@
       A: A * Math.exp(uTeam), vsPug: Math.exp(uTeam - model.mu), mu1: model.mu1 || 0 };
   }
 
-  G.Engine = { MODEL, KNOWN_TIMERS, decodeRoute, buildPulls, memberFromRio, finishMember, simulate, audit, hpMult, keyScale, teamDps, pullTime, refPulls, fitHistory, simulateHistory, memberFromRoster, weekOf };
+  G.Engine = { encodeRoute, cborEncode, newPreset, newUid, PULL_COLORS, sanitize, MODEL, KNOWN_TIMERS, decodeRoute, buildPulls, memberFromRio, finishMember, simulate, audit, hpMult, keyScale, teamDps, pullTime, refPulls, fitHistory, simulateHistory, memberFromRoster, weekOf };
   if (typeof module !== 'undefined') module.exports = G.Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

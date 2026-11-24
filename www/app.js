@@ -153,15 +153,34 @@
     } catch (e) { box.insertAdjacentHTML('beforeend', `<p class="err">Hiba: ${esc(e.message)}</p>`); }
     $('#btnRunLoad').disabled = false;
   };
+  // Mentett csapatok: betöltés, felülírás a jelenlegivel, átnevezés, törlés
+  let activeTeam = store.get('activeTeam', '');
   function renderTeamSel() {
-    const saved = store.get('teams', {});
-    $('#teamSel').innerHTML = '<option value="">– válassz –</option>' + Object.keys(saved).map(n => `<option>${esc(n)}</option>`).join('');
+    const saved = store.get('teams', {}), names = Object.keys(saved).sort((a, b) => a.localeCompare(b, 'hu'));
+    $('#savedTeams').innerHTML = names.map((n, i) => {
+      const t = saved[n].filter(Boolean);
+      return `<div class="card"><div class="nm">${esc(n)}${n === activeTeam ? ' <span class="chip">betöltve</span>' : ''}</div>
+        <div class="sub">${t.map(m => `<span style="color:${CLASS_COLOR[m.cls] || 'inherit'}">${esc(m.name)}</span> ${esc(m.spec || '')}`).join(' · ') || 'üres'}</div>
+        <div class="team-act"><button class="link" data-tload="${i}">Betöltés</button><button class="link" data-tsave="${i}">Felülírás a mostanival</button>
+        <button class="link" data-tren="${i}">Átnevezés</button><button class="link" data-tdel="${i}" style="color:var(--bad)">Törlés</button></div></div>`;
+    }).join('') || '<p class="note">Még nincs mentett csapat.</p>';
+    const act = (attr, fn) => document.querySelectorAll(`[data-${attr}]`).forEach(b => b.onclick = () => fn(names[+b.dataset[attr]]));
+    act('tload', n => { team = JSON.parse(JSON.stringify(store.get('teams', {})[n])); activeTeam = n; store.set('activeTeam', n); saveTeam(); renderSlots(); renderTeamSel(); window.scrollTo(0, 0); });
+    act('tsave', n => { if (!team.some(Boolean) || !confirm(`Felülírod a(z) „${n}” csapatot a mostani összeállítással?`)) return;
+      const sv = store.get('teams', {}); sv[n] = team; store.set('teams', sv); activeTeam = n; store.set('activeTeam', n); renderTeamSel(); });
+    act('tren', n => { const nn = (prompt('Új név:', n) || '').trim(); if (!nn || nn === n) return;
+      const sv = store.get('teams', {}); if (sv[nn] && !confirm(`Már van „${nn}” nevű csapat. Felülírod?`)) return;
+      sv[nn] = sv[n]; delete sv[n]; store.set('teams', sv); if (activeTeam === n) { activeTeam = nn; store.set('activeTeam', nn); } renderTeamSel(); });
+    act('tdel', n => { if (!confirm(`Törlöd a(z) „${n}” csapatot?`)) return;
+      const sv = store.get('teams', {}); delete sv[n]; store.set('teams', sv); if (activeTeam === n) { activeTeam = ''; store.set('activeTeam', ''); } renderTeamSel(); });
   }
-  $('#teamSel').onchange = e => { const saved = store.get('teams', {}); if (saved[e.target.value]) { team = saved[e.target.value]; saveTeam(); renderSlots(); } };
   $('#btnSaveTeam').onclick = () => {
     const names = team.filter(Boolean).map(m => m.name);
     if (!names.length) return;
-    const saved = store.get('teams', {}); saved[names.join(', ')] = team; store.set('teams', saved); renderTeamSel();
+    const n = (prompt('Csapat neve:', activeTeam || names.join(', ')) || '').trim(); if (!n) return;
+    const saved = store.get('teams', {});
+    if (saved[n] && !confirm(`Már van „${n}” nevű csapat. Felülírod?`)) return;
+    saved[n] = team; store.set('teams', saved); activeTeam = n; store.set('activeTeam', n); renderTeamSel();
     $('#btnSaveTeam').textContent = 'Mentve ✓'; setTimeout(() => $('#btnSaveTeam').textContent = 'Csapat mentése', 1500);
   };
 
@@ -175,7 +194,8 @@
       if (!d) throw new Error(`Ismeretlen dungeon (MDT index ${idx}). Csak a Midnight dungeonjai támogatottak.`);
       const pulls = E.buildPulls(r, d);
       const name = $('#routeName').value.trim() || r.text || 'Route';
-      routes.push({ id: Date.now(), name, idx, dungeon: d.name, str, pulls: pulls.length, count: pulls.reduce((a, p) => a + p.count, 0), total: d.total });
+      const real = pulls.filter(p => !p.extra);
+      routes.push({ id: Date.now(), name, idx, dungeon: d.name, str, pulls: real.length, count: real.reduce((a, p) => a + p.count, 0), total: d.total });
       store.set('routes', routes);
       $('#mdtIn').value = ''; $('#routeName').value = '';
       msg.innerHTML = `<p class="ok">Importálva: ${esc(d.name)} – ${esc(name)} (${pulls.length} pull)</p>` + (d.skipped && d.skipped.length ? `<p class="note">Kihagyva mint eseménymob (nem kell megölni): ${esc(d.skipped.join(', '))}</p>` : '');
@@ -189,9 +209,13 @@
       const short = r.count < r.total;
       return `<div class="card"><div class="row"><div class="grow"><div class="nm">${esc(r.name)}</div>
         <div class="sub">${r.pulls} pull · <span class="${short ? 'bad' : 'ok'}">${r.count}/${r.total} count</span></div></div>
-        <button class="link" data-rdel="${r.id}">Törlés</button></div></div>`;
+        <button class="link" data-redit="${r.id}">Szerkesztés</button><button class="link" data-rexp="${r.id}">Export</button>
+        <button class="link" data-rdel="${r.id}" style="color:var(--bad)">Törlés</button></div><div class="rexp" id="rexp${r.id}"></div></div>`;
     }).join('')).join('') || '<p class="note">Még nincs route. Az MDT-ben: route → Export, majd ide beillesztve.</p>';
-    document.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { routes = routes.filter(r => r.id !== +b.dataset.rdel); store.set('routes', routes); renderRoutes(); });
+    document.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { const r = routes.find(x => x.id === +b.dataset.rdel);
+      if (!r || !confirm(`Törlöd a(z) „${r.name}” route-ot?`)) return; routes = routes.filter(x => x !== r); store.set('routes', routes); renderRoutes(); });
+    document.querySelectorAll('[data-redit]').forEach(b => b.onclick = () => openPlanner(routes.find(x => x.id === +b.dataset.redit)));
+    document.querySelectorAll('[data-rexp]').forEach(b => b.onclick = () => { const r = routes.find(x => x.id === +b.dataset.rexp); showExport($('#rexp' + r.id), r.str); });
     $('#hdr').textContent = team.filter(Boolean).length + '/5 csapattag · ' + routes.length + ' route';
   }
   function fillRouteSelects() {
@@ -411,6 +435,140 @@
     } catch (e) { $('#affixNote').textContent = 'A heti affixokat nem sikerült lekérni – válaszd ki kézzel.'; }
   }
 
+
+  // ------------------------------------------------ PULL-TERVEZŐ (MDT-kompatibilis)
+  function showView(v) {
+    document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+    document.querySelectorAll('section.view').forEach(x => x.classList.toggle('on', x.id === 'v-' + v));
+    window.scrollTo(0, 0);
+  }
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch (e) { return false; }
+  }
+  async function showExport(box, str) {
+    const ok = await copyText(str);
+    box.innerHTML = `<p class="${ok ? 'ok' : 'note'}">${ok ? 'Vágólapra másolva. A játékban: MDT → Import, majd beillesztés.' : 'Jelöld ki és másold ki:'}</p><textarea readonly>${esc(str)}</textarea>`;
+    const ta = box.querySelector('textarea'); ta.onclick = () => ta.select(); if (!ok) ta.select();
+  }
+  function fillPlanDg() {
+    const ds = Object.entries(DATA.dungeons || {}).sort((a, b) => a[1].name.localeCompare(b[1].name));
+    $('#planDg').innerHTML = ds.map(([i, d]) => `<option value="${i}">${esc(d.name)}</option>`).join('');
+  }
+  const PL = { zoom: 2 };
+  function openPlanner(route, idx) {
+    let preset;
+    if (route) { preset = E.decodeRoute(route.str); idx = preset.value.currentDungeonIdx; }
+    else preset = E.newPreset(idx, (DATA.dungeons[idx] || {}).name + ' – saját route');
+    const d = DATA.dungeons[idx]; if (!d) { alert('Ismeretlen dungeon.'); return; }
+    E.sanitize(d);
+    const pulls = (Array.isArray(preset.value.pulls) ? preset.value.pulls : Object.values(preset.value.pulls || {})).map((p, i) => {
+      const sel = {};
+      for (const [k, v] of Object.entries(p || {})) if (k !== 'color' && d.enemies[k]) { const cs = (Array.isArray(v) ? v : Object.values(v || {})).map(Number); if (cs.length) sel[k] = cs; }
+      return { color: (p && typeof p.color === 'string' ? p.color : E.PULL_COLORS[i % E.PULL_COLORS.length]).replace('#', ''), sel };
+    });
+    if (!pulls.length) pulls.push({ color: E.PULL_COLORS[0], sel: {} });
+    // csoportok: MDT "g" = pack; ugyanazon csoportszámú klónok együtt húzódnak
+    const groups = {}, mobs = [];
+    for (const [ei, e] of Object.entries(d.enemies)) for (const [ci, c] of Object.entries(e.cl || {})) {
+      const g = e.g && e.g[ci] != null ? 'g' + e.g[ci] : 's' + ei + '_' + ci;
+      (groups[g] = groups[g] || []).push([ei, +ci]);
+      mobs.push({ ei, ci: +ci, x: c[0], y: -c[1], sub: c[2] || 1, g, e });
+    }
+    Object.assign(PL, { route, idx, d, preset, pulls, cur: Math.max(0, Math.min(pulls.length - 1, (preset.value.currentPull || 1) - 1)), groups, mobs,
+      sub: preset.value.currentSublevel || 1 });
+    $('#plName').value = route ? route.name : preset.text;
+    $('#plOut').innerHTML = '';
+    showView('plan');
+    drawPlanner(true);
+  }
+  const pullOf = (ei, ci) => PL.pulls.findIndex(p => p.sel[ei] && p.sel[ei].includes(ci));
+  const pullCount = p => Object.entries(p.sel).reduce((a, [ei, cs]) => a + (PL.d.enemies[ei].c || 0) * cs.length, 0);
+  function toggle(ei, ci) {
+    const single = $('#plSingle').checked, m = PL.mobs.find(x => x.ei === ei && x.ci === ci);
+    const set = single ? [[ei, ci]] : PL.groups[m.g];
+    const inCur = pullOf(ei, ci) === PL.cur;
+    for (const [e2, c2] of set) {
+      PL.pulls.forEach(p => { if (p.sel[e2]) { p.sel[e2] = p.sel[e2].filter(x => x !== c2); if (!p.sel[e2].length) delete p.sel[e2]; } });
+      if (!inCur) { const s2 = PL.pulls[PL.cur].sel; (s2[e2] = s2[e2] || []).push(c2); s2[e2].sort((a, b) => a - b); }
+    }
+    const names = {}; set.forEach(([e2]) => { const e = PL.d.enemies[e2]; names[e.n] = (names[e.n] || 0) + 1; });
+    const cnt = set.reduce((a, [e2]) => a + (PL.d.enemies[e2].c || 0), 0);
+    $('#plInfo').textContent = `${inCur ? 'Kivéve' : 'Hozzáadva a(z) ' + (PL.cur + 1) + '. pullhoz'}: ${Object.entries(names).map(([n, k]) => k > 1 ? `${n} ×${k}` : n).join(', ')} (${cnt} count)`;
+    drawPlanner();
+  }
+  function drawPlanner(fit) {
+    const { d, pulls, mobs } = PL, total = d.total || 1;
+    const vis = mobs.filter(m => m.sub === PL.sub);
+    const xs = vis.map(m => m.x), ys = vis.map(m => m.y), pad = 25;
+    const x0 = Math.min(...xs) - pad, y0 = Math.min(...ys) - pad, w = Math.max(...xs) - x0 + pad, h = Math.max(...ys) - y0 + pad;
+    const box = $('#plMap'), cw = box.clientWidth || 360, sx = box.scrollLeft, sy = box.scrollTop, oldW = box.scrollWidth || 1;
+    const pxW = cw * PL.zoom, pxH = pxW * h / w;
+    let svg = `<svg width="${pxW}" height="${pxH}" viewBox="${x0} ${y0} ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
+    // packok halvány körvonala
+    for (const [g, mem] of Object.entries(PL.groups)) {
+      if (g[0] !== 'g') continue;
+      const pts = mem.map(([ei, ci]) => mobs.find(m => m.ei === ei && m.ci === ci)).filter(m => m && m.sub === PL.sub);
+      if (pts.length < 2) continue;
+      const cx = pts.reduce((a, m) => a + m.x, 0) / pts.length, cy = pts.reduce((a, m) => a + m.y, 0) / pts.length;
+      const r = Math.max(...pts.map(m => Math.hypot(m.x - cx, m.y - cy))) + 9;
+      svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ffffff08" stroke="#ffffff22" stroke-width="1"/>`;
+    }
+    for (const m of vis) {
+      const pi = pullOf(m.ei, m.ci), col = pi >= 0 ? '#' + pulls[pi].color : '#5a6270';
+      const r = m.e.b ? 9 : 3.5 + Math.min(3.5, (m.e.c || 0) * 0.7), cur = pi === PL.cur && pi >= 0;
+      const stroke = cur ? '#ffffff' : m.e.b ? '#e8b64a' : '#0b0e12', sw = cur ? 2 : m.e.b ? 2 : 1;
+      svg += m.e.b ? `<rect x="${m.x - r}" y="${m.y - r}" width="${2 * r}" height="${2 * r}" rx="3" fill="${col}" stroke="${stroke}" stroke-width="${sw}"/>`
+        : `<circle cx="${m.x}" cy="${m.y}" r="${r}" fill="${col}" stroke="${stroke}" stroke-width="${sw}"${m.e.skip ? ' fill-opacity=".35"' : ''}/>`;
+      if (pi >= 0 && m.e.b) svg += `<text x="${m.x}" y="${m.y + 3.5}" font-size="10" text-anchor="middle" fill="#000" font-weight="700">${pi + 1}</text>`;
+      svg += `<circle cx="${m.x}" cy="${m.y}" r="12" fill="transparent" data-e="${m.ei}" data-c="${m.ci}"/>`;
+    }
+    svg += '</svg>';
+    box.innerHTML = svg;
+    if (fit) { box.scrollLeft = (pxW - cw) / 2; box.scrollTop = 0; }
+    else { const k = pxW / oldW; box.scrollLeft = sx * k; box.scrollTop = sy * k; }
+    box.querySelectorAll('[data-e]').forEach(c => c.onclick = () => toggle(c.dataset.e, +c.dataset.c));
+    // összesítés
+    const sum = pulls.reduce((a, p) => a + pullCount(p), 0);
+    $('#plFill').style.width = Math.min(100, sum / total * 100) + '%';
+    $('#plFill').style.background = sum >= total ? 'var(--ok)' : 'var(--warn)';
+    $('#plCount').textContent = `${sum}/${total} count (${(sum / total * 100).toFixed(1)}%) · ${pulls.length} pull`;
+    let acc = 0;
+    $('#plPulls').innerHTML = pulls.map((p, i) => { const c = pullCount(p); acc += c;
+      return `<span class="chip pl${i === PL.cur ? ' on' : ''}" data-p="${i}" style="border-color:#${p.color}"><b>${i + 1}</b> ${(c / total * 100).toFixed(1)}% <span class="sub">(${(acc / total * 100).toFixed(0)}%)</span></span>`; }).join('');
+    document.querySelectorAll('#plPulls [data-p]').forEach(c => c.onclick = () => { PL.cur = +c.dataset.p; drawPlanner(); });
+    const p = pulls[PL.cur], agg = {};
+    for (const [ei, cs] of Object.entries(p.sel)) { const e = d.enemies[ei]; agg[e.n] = agg[e.n] || { n: 0, c: 0, b: e.b }; agg[e.n].n += cs.length; agg[e.n].c += (e.c || 0) * cs.length; }
+    $('#plDetail').innerHTML = `<div class="card"><div class="nm">${PL.cur + 1}. pull · ${pullCount(p)} count</div><div class="sub">${
+      Object.entries(agg).map(([n, a]) => `${a.b ? '<b style="color:var(--gold)">' + esc(n) + '</b>' : esc(n)}${a.n > 1 ? ' ×' + a.n : ''}`).join(', ') || 'Üres – koppints mobokra a térképen.'}</div></div>`;
+  }
+  $('#plZoomIn').onclick = () => { PL.zoom = Math.min(6, PL.zoom * 1.5); drawPlanner(); };
+  $('#plZoomOut').onclick = () => { PL.zoom = Math.max(1, PL.zoom / 1.5); drawPlanner(); };
+  $('#plAdd').onclick = () => { PL.pulls.splice(PL.cur + 1, 0, { color: E.PULL_COLORS[(PL.cur + 1) % E.PULL_COLORS.length], sel: {} }); PL.cur++; drawPlanner(); };
+  $('#plDel').onclick = () => {
+    if (PL.pulls.length === 1) { PL.pulls[0].sel = {}; drawPlanner(); return; }
+    if (Object.keys(PL.pulls[PL.cur].sel).length && !confirm(`Törlöd a(z) ${PL.cur + 1}. pullt?`)) return;
+    PL.pulls.splice(PL.cur, 1); PL.cur = Math.max(0, PL.cur - 1); drawPlanner();
+  };
+  function buildPreset() {
+    const pr = JSON.parse(JSON.stringify(PL.preset));
+    const used = PL.pulls.filter(p => Object.keys(p.sel).length);
+    pr.text = $('#plName').value.trim() || pr.text;
+    pr.value.pulls = (used.length ? used : [PL.pulls[0]]).map(p => Object.assign({}, p.sel, { color: p.color }));
+    pr.value.currentPull = 1; pr.value.selection = [];
+    return pr;
+  }
+  $('#plSave').onclick = () => {
+    const pr = buildPreset(), str = E.encodeRoute(pr), d = PL.d;
+    const bp = E.buildPulls(E.decodeRoute(str), d).filter(p => !p.extra);
+    const rec = { name: pr.text, idx: PL.idx, dungeon: d.name, str, pulls: bp.length, count: bp.reduce((a, p) => a + p.count, 0), total: d.total };
+    if (PL.route) Object.assign(PL.route, rec); else { PL.route = Object.assign({ id: Date.now() }, rec); routes.push(PL.route); }
+    PL.preset = pr; store.set('routes', routes); renderRoutes(); fillRouteSelects();
+    $('#plOut').innerHTML = `<p class="ok">Mentve: ${esc(d.name)} – ${esc(pr.text)} (${bp.length} pull, ${rec.count}/${d.total} count). A szimulációban és az auditban is választható.</p>`;
+  };
+  $('#plExport').onclick = () => showExport($('#plOut'), E.encodeRoute(buildPreset()));
+  $('#plClose').onclick = () => showView('routes');
+  $('#btnPlanNew').onclick = () => openPlanner(null, $('#planDg').value);
+
   // ------------------------------------------------ indulás
   (async () => {
     try {
@@ -419,7 +577,7 @@
     } catch (e) { $('#hdr').textContent = 'Adatbetöltési hiba: ' + e.message; }
     $('#region').value = store.get('region', 'eu');
     $('#region').onchange = e => { store.set('region', e.target.value); loadAffixes(); };
-    renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
+    renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects(); fillPlanDg();
     loadAffixes();
     $('#mode').value = store.get('mode', 'hist'); syncMode();
     const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 7) renderHist(hm0);

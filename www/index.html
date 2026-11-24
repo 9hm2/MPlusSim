@@ -22,6 +22,15 @@ h2{font-size:17px;margin:18px 0 8px}h3{font-size:15px;margin:14px 0 6px;color:va
 .grow{flex:1}
 label{font-size:13px;color:var(--mute);display:block;margin:8px 0 4px}
 input,select,textarea,button{font:inherit;font-size:16px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
+#plMap{height:52vh;overflow:auto;background:#0b0e12;border:1px solid var(--line);border-radius:12px;margin-top:8px;touch-action:pan-x pan-y}
+#plMap svg{display:block}
+.plbar{position:relative;height:22px;background:var(--panel2);border-radius:8px;overflow:hidden;margin-top:8px}
+#plFill{height:100%;background:var(--ok);width:0}
+#plCount{position:absolute;inset:0;text-align:center;font-size:13px;line-height:22px;color:#fff;text-shadow:0 1px 2px #000}
+.pltools{margin-top:8px}.pltools button{min-width:44px}
+.tog{display:flex;align-items:center;gap:6px;margin:0;font-size:14px;color:var(--ink)}.tog input{min-height:0;width:18px;height:18px}
+.chip.pl{cursor:pointer;border-width:2px}.chip.pl.on{background:var(--panel);box-shadow:0 0 0 2px var(--gold)}
+.team-act{display:flex;gap:2px;flex-wrap:wrap}
 textarea{width:100%;min-height:96px;font-size:13px;font-family:ui-monospace,monospace}
 input,select{width:100%}
 button{background:var(--gold);color:#1a1405;border:0;font-weight:600;cursor:pointer}
@@ -65,7 +74,7 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
 <section class="view on" id="v-team">
   <div class="row"><div class="grow"><label for="region">Régió</label>
     <select id="region"><option value="eu">EU</option><option value="us">US</option><option value="kr">KR</option><option value="tw">TW</option></select></div>
-    <div class="grow"><label for="teamSel">Mentett csapat</label><select id="teamSel"></select></div></div>
+    </div>
   <div id="slots"></div>
   <div class="row" style="margin-top:8px">
     <button class="sec grow" id="btnSaveTeam">Csapat mentése</button>
@@ -77,6 +86,8 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
     <div class="row" style="margin-top:8px"><button id="btnRunLoad" class="grow">Betöltés</button></div>
     <p class="note">A futásban használt specet és talentet veszi át (ha valaki azóta specet váltott).</p>
   </div>
+  <h2>Mentett csapatok</h2>
+  <div id="savedTeams"></div>
   <p class="note">Az adatokat a Raider.io-ról kéri le (az armory adatai alapján, név és realm szerint).</p>
 </section>
 
@@ -86,7 +97,27 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
   <textarea id="mdtIn" placeholder="!~MDT2~…"></textarea>
   <div class="row" style="margin-top:8px"><input id="routeName" class="grow" placeholder="Név (alapból a route címe)"><button id="btnImport">Importálás</button></div>
   <div id="impMsg"></div>
+  <h2>Új route tervezése</h2>
+  <div class="row"><select id="planDg" class="grow"></select><button id="btnPlanNew">Tervezés</button></div>
   <div id="routeList"></div>
+</section>
+
+<!-- PULL-TERVEZŐ -->
+<section class="view" id="v-plan">
+  <div class="row"><input id="plName" class="grow" placeholder="Route neve"><button class="sec" id="plClose">Bezárás</button></div>
+  <div class="plbar"><div id="plFill"></div><span id="plCount"></span></div>
+  <div class="row pltools">
+    <button class="sec" id="plZoomOut">−</button><button class="sec" id="plZoomIn">+</button>
+    <label class="tog"><input type="checkbox" id="plSingle"> Egyenként</label>
+    <span class="grow"></span>
+    <button class="sec" id="plAdd">+ Pull</button><button class="sec" id="plDel">Pull törlése</button>
+  </div>
+  <div id="plMap"></div>
+  <p class="note" id="plInfo">Koppints egy mobcsoportra: a kijelölt pullhoz kerül, újabb koppintásra kikerül.</p>
+  <div class="chips" id="plPulls"></div>
+  <div id="plDetail"></div>
+  <div class="row" style="margin-top:10px"><button class="grow" id="plSave">Mentés</button><button class="sec grow" id="plExport">MDT export</button></div>
+  <div id="plOut"></div>
 </section>
 
 <!-- SZIMULÁCIÓ -->
