@@ -99,11 +99,23 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
     <div><label for="week">Heti affix (+7–9)</label><select id="week"><option value="">Átlag (ismeretlen)</option><option value="fortified">Fortified</option><option value="tyrannical">Tyrannical</option></select></div>
   </div>
   <p class="note" id="affixNote"></p>
-  <details><summary>Kalibrálás egy valódi futásra (ajánlott)</summary>
-    <div class="grid2"><div><label for="calL">Kulcsszint</label><input id="calL" type="number" inputmode="numeric" placeholder="pl. 10"></div>
-    <div><label for="calT">Idő (pp:mm)</label><input id="calT" placeholder="pl. 23:17"></div></div>
-    <p class="note">Ugyanez a csapat, ugyanez a dungeon. A modell ehhez igazítja a csapat hatékonyságát.</p>
-  </details>
+  <div class="card">
+    <label for="mode">Kalibrálás</label>
+    <select id="mode">
+      <option value="hist">Előzmények alapján (ajánlott)</option>
+      <option value="one">Egy megadott futásra</option>
+      <option value="none">Nincs – csak becslés</option>
+    </select>
+    <div id="histBox">
+      <p class="note">A csapattagok Raider.io-n látható futásaiból (legutóbbi, legjobb, alternatív) és azok teljes csapatából illeszti a dungeonok fix idejét és a játékosok egyéni hatékonyságát.</p>
+      <div class="row"><button class="sec grow" id="btnHist">Előzmények betöltése és illesztése</button></div>
+      <div id="histOut"></div>
+    </div>
+    <div id="oneBox" hidden>
+      <div class="grid2"><div><label for="calL">Kulcsszint</label><input id="calL" type="number" inputmode="numeric" placeholder="pl. 10"></div>
+      <div><label for="calT">Idő (pp:mm)</label><input id="calT" placeholder="pl. 23:17"></div></div>
+    </div>
+  </div>
   <details><summary>Modell-paraméterek</summary>
     <div class="grid2">
       <div><label for="pHeal">Healer sebzés (DPS-átlag %)</label><input id="pHeal" type="number" value="30" inputmode="numeric"></div>

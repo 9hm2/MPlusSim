@@ -416,6 +416,162 @@
     return { tools, kickCap, needs, gaps: [...gaps].sort(), teamCc, ccTable, pullKicks, dmg, kit };
   }
 
-  G.Engine = { MODEL, KNOWN_TIMERS, decodeRoute, buildPulls, memberFromRio, finishMember, simulate, audit, hpMult, keyScale, teamDps, pullTime };
+
+  // ================================================================ ELŐZMÉNY-ALAPÚ KALIBRÁLÁS
+  // Modell futásonként:  T = A_d + C × exp(β + átlag u_játékos)
+  //   C   = harcidő egy referencia-route-on (minden boss + a count eléréséhez legolcsóbb trash-csomagok),
+  //         a futás csapatának DPS-ével (spec + futás kori ilvl), az adott kulcsszinten
+  //   A_d = dungeon fix ideje (séta, RP, mechanika)        – dungeononként illesztve, priorral
+  //   u   = játékos-hatékonyság (log), 0 = átlagos         – ridge-regresszió, sok futásból
+  //   maradék: log(T / T_pred) = γ·nyomás + ε             – nyomás = kulcs − a csapat legjobb időben futott kulcsa
+  function refPulls(dungeon) {
+    const E = dungeon.enemies, packs = {}, bosses = {};
+    for (const [k, e] of Object.entries(E)) {
+      for (const ci of Object.keys(e.cl)) {
+        const g = e.g && e.g[ci];
+        if (e.b) { (bosses[g != null ? 'g' + g : k] = bosses[g != null ? 'g' + g : k] || []).push(e); continue; }
+        const key = g != null ? 'g' + g : k + ':' + ci;
+        (packs[key] = packs[key] || []).push(e);
+      }
+    }
+    const pulls = [];
+    for (const mobs of Object.values(bosses)) pulls.push({ mobs, boss: true, count: mobs.reduce((a, m) => a + m.c, 0), lust: false });
+    const list = Object.values(packs).map(mobs => ({ mobs, boss: false, count: mobs.reduce((a, m) => a + m.c, 0), hp: mobs.reduce((a, m) => a + m.h, 0), lust: false }))
+      .filter(p => p.count > 0).sort((a, b) => b.count / b.hp - a.count / a.hp);
+    let got = pulls.reduce((a, p) => a + p.count, 0);
+    for (const p of list) { if (got >= dungeon.total) break; pulls.push(p); got += p.count; }
+    if (pulls.length) pulls[0].lust = true;
+    const bi = pulls.findIndex(p => p.boss); if (bi >= 0) pulls[bi].lust = true;
+    return pulls;
+  }
+
+  function memberFromRoster(r) {
+    const c = r.character || r;
+    const d = { name: c.name, class: c.class && (c.class.name || c.class), active_spec_name: c.spec && c.spec.name,
+      active_spec_role: ({ healer: 'HEALING', tank: 'TANK' })[r.role || (c.spec && c.spec.role)] || 'DPS',
+      gear: r.items || c.items || { item_level_equipped: 0, items: {} } };
+    const m = memberFromRio(d);
+    m.key = ((c.region && c.region.slug || '') + '/' + (c.realm && c.realm.slug || '') + '/' + c.name).toLowerCase();
+    m.skill = 1; m.comfort = 10;
+    return m;
+  }
+
+  function combatTime(pulls, L, members, table, week) {
+    const T = teamDps(members, table);
+    return pulls.reduce((a, p) => a + pullTime(p, L, week, T), 0);
+  }
+
+  function weekOf(affixes) {
+    const n = (affixes || []).map(a => a.name || a);
+    const f = n.indexOf('Fortified'), t = n.indexOf('Tyrannical');
+    return f < 0 && t < 0 ? null : f < 0 ? 'tyrannical' : t < 0 ? 'fortified' : (t < f ? 'tyrannical' : 'fortified');
+  }
+
+  // runs: [{id, mapId, level, time, timer, upgrades, affixes, roster:[raider.io roster entries]}]
+  function fitHistory(runs, dungeons, table, opt) {
+    opt = Object.assign({ tau: 0.25, iters: 25 }, opt || {});
+    const byMap = {}; for (const [idx, d] of Object.entries(dungeons)) if (d.mapID) byMap[d.mapID] = idx;
+    const refCache = {};
+    const obs = [];
+    for (const r of runs) {
+      const idx = byMap[r.mapId]; if (!idx || !r.roster || r.roster.length < 3) continue;
+      const d = dungeons[idx];
+      refCache[idx] = refCache[idx] || refPulls(d);
+      const mem = r.roster.map(memberFromRoster);
+      const C = combatTime(refCache[idx], r.level, mem, table, weekOf(r.affixes));
+      if (!(C > 0)) continue;
+      obs.push({ r, idx, C, T: r.time, timer: r.timer, players: mem.map(m => m.key), level: r.level });
+    }
+    if (obs.length < 3) return { ok: false, n: obs.length, reason: 'Kevés használható futás (legalább 3 kell).' };
+    // indexek
+    const P = [...new Set(obs.flatMap(o => o.players))], pi = Object.fromEntries(P.map((p, i) => [p, i]));
+    const Dg = [...new Set(obs.map(o => o.idx))];
+    const timerOf = {}; obs.forEach(o => { timerOf[o.idx] = o.timer; });
+    const prior = {}; Dg.forEach(d => { prior[d] = 0.15 * timerOf[d]; });
+    let A = Object.assign({}, prior), u = new Float64Array(P.length), beta = 0, sigma = 0.15;
+    const pred = o => A[o.idx] + o.C * Math.exp(beta + o.players.reduce((a, p) => a + u[pi[p]], 0) / o.players.length);
+    for (let it = 0; it < opt.iters; it++) {
+      // 1) u és β ridge-regresszióval (Gauss–Seidel)
+      const y = obs.map(o => Math.log(Math.max(o.T - A[o.idx], 0.2 * o.T)) - Math.log(o.C));
+      for (let sweep = 0; sweep < 20; sweep++) {
+        // β
+        let num = 0; obs.forEach((o, k) => { num += y[k] - o.players.reduce((a, p) => a + u[pi[p]], 0) / o.players.length; });
+        beta = num / (obs.length + 0.01);
+        for (let j = 0; j < P.length; j++) {
+          let a = 0, b = 0;
+          obs.forEach((o, k) => {
+            if (!o.players.includes(P[j])) return;
+            const w = 1 / o.players.length, rest = beta + o.players.reduce((s, p) => s + (p === P[j] ? 0 : u[pi[p]]), 0) * w;
+            a += w * w; b += w * (y[k] - rest);
+          });
+          u[j] = b / (a + (sigma * sigma) / (opt.tau * opt.tau));
+        }
+      }
+      // 2) A_d dungeononként (aranymetszés), prior: 15% timer ± 8%
+      for (const d of Dg) {
+        const os = obs.filter(o => o.idx === d), sd0 = 0.08 * timerOf[d];
+        const f = a => os.reduce((s, o) => { const k = Math.exp(beta + o.players.reduce((x, p) => x + u[pi[p]], 0) / o.players.length);
+          const e = Math.log(o.T) - Math.log(a + o.C * k); return s + e * e; }, 0) / (sigma * sigma) + ((a - prior[d]) / sd0) ** 2;
+        let lo = 0, hi = 0.6 * timerOf[d];
+        for (let g = 0; g < 40; g++) { const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618; if (f(m1) < f(m2)) hi = m2; else lo = m1; }
+        A[d] = (lo + hi) / 2;
+      }
+      const res = obs.map(o => Math.log(o.T / pred(o)));
+      sigma = Math.max(0.04, Math.sqrt(res.reduce((a, x) => a + x * x, 0) / Math.max(1, obs.length - 1)));
+    }
+    // nyomás-hatás: maradék ~ γ · (kulcs − a csapat medián komfortja), csak a pozitív részen
+    const comfortOf = {}; // játékosonként a legmagasabb időben futott kulcs az adatokban
+    obs.forEach(o => { if (o.r.upgrades > 0) o.players.forEach(p => { comfortOf[p] = Math.max(comfortOf[p] || 0, o.level); }); });
+    const pressure = o => { const c = o.players.map(p => comfortOf[p] || o.level).sort((a, b) => a - b); return o.level - c[Math.floor(c.length / 2)]; };
+    let sxx = 0, sxy = 0;
+    obs.forEach(o => { const x = Math.max(0, pressure(o)); const e = Math.log(o.T / pred(o)); sxx += x * x; sxy += x * e; o.resid = e; o.press = pressure(o); });
+    const gamma = sxx > 0 ? Math.max(0, sxy / (sxx + 4)) : 0;
+    const resid = obs.map(o => o.resid - gamma * Math.max(0, o.press));
+    const mae = obs.reduce((a, o) => a + Math.abs(o.T - pred(o) * Math.exp(gamma * Math.max(0, o.press))), 0) / obs.length;
+    const playerEff = {}; P.forEach((p, i) => { playerEff[p] = { u: u[i], n: obs.filter(o => o.players.includes(p)).length }; });
+    return { ok: true, n: obs.length, A, beta, sigma, gamma, resid, playerEff, comfortOf, mae, timerOf,
+      runs: obs.map(o => ({ dungeon: dungeons[o.idx].name, level: o.level, T: o.T, pred: pred(o) * Math.exp(gamma * Math.max(0, o.press)), timed: o.r.upgrades > 0 })) };
+  }
+
+  // előrejelzés a kiválasztott route-ra
+  function simulateHistory(opts) {
+    const { model, members, pulls, idx, levels, week, timer, table, runs } = opts;
+    members.forEach(finishMember);
+    const mem = members.map(m => Object.assign({}, m, { skill: 1 }));
+    const keys = members.map(m => (m.key || '').toLowerCase());
+    const uTeam = keys.reduce((a, k) => a + ((model.playerEff[k] || {}).u || 0), 0) / keys.length;
+    const known = keys.filter(k => model.playerEff[k]).length;
+    const K = Math.exp(model.beta + uTeam);
+    const Aall = Object.values(model.A), tAll = Object.values(model.timerOf);
+    const A = model.A[idx] != null ? model.A[idx] : timer * (Aall.reduce((a, x, i) => a + x / tAll[i], 0) / Aall.length);
+    const comfort = (() => { const c = keys.map((k, i) => model.comfortOf[k] || members[i].comfort).sort((a, b) => a - b); return c[Math.floor(c.length / 2)]; })();
+    const res = model.resid.length ? model.resid : [0];
+    const extraSd = Math.sqrt(Math.max(0, 5 - known)) * 0.03 + (model.A[idx] == null ? 0.05 : 0);   // ismeretlen játékos / dungeon bizonytalansága
+    const r = rngFactory(11);
+    const T0 = teamDps(mem, table);
+    members.forEach((m, i) => { m.estDps = mem[i].estDps; });
+    const rows = levels.map(L => {
+      const C = pulls.reduce((a, p) => a + pullTime(p, L, week, T0), 0);
+      const pred = A + C * K;
+      const press = Math.max(0, L - comfort);
+      const beyond = Math.max(0, press - 2);                     // a megfigyelt tartományon túl: meredekebb
+      const ts = [], N = runs || 3000; let dep = 0;
+      for (let i = 0; i < N; i++) {
+        const e = res[Math.floor(r() * res.length)] + normal(r) * extraSd;
+        let t = pred * Math.exp(model.gamma * press + 0.05 * beyond * beyond + e);
+        // a Raider.io nem mutatja a feladott kulcsokat: nagy nyomásnál feladás esélye
+        if (r() < Math.min(0.6, 0.04 * beyond * beyond)) { dep++; t = Infinity; }
+        ts.push(t);
+      }
+      const fin = ts.filter(isFinite).sort((a, b) => a - b), q = f => fin.length ? fin[Math.min(fin.length - 1, Math.floor(f * fin.length))] : Infinity;
+      return { level: L, median: q(0.5), p10: q(0.1), p90: q(0.9), pTime: ts.filter(t => t <= timer).length / N,
+        p2: ts.filter(t => t <= timer * MODEL.chest2).length / N, p3: ts.filter(t => t <= timer * MODEL.chest3).length / N,
+        deaths: NaN, extras: NaN, abandon: dep / N, pulls: pulls.map(p => pullTime(p, L, week, T0) * K), fixed: A };
+    });
+    const top = th => { const ok = rows.filter(x => x.pTime >= th); return ok.length ? ok[ok.length - 1].level : null; };
+    return { rows, eff: K, team: T0, safe: top(0.85), rec: top(0.6), push: top(0.3), history: true, known, comfort, A };
+  }
+
+  G.Engine = { MODEL, KNOWN_TIMERS, decodeRoute, buildPulls, memberFromRio, finishMember, simulate, audit, hpMult, keyScale, teamDps, pullTime, refPulls, fitHistory, simulateHistory, memberFromRoster, weekOf };
   if (typeof module !== 'undefined') module.exports = G.Engine;
 })(typeof window !== 'undefined' ? window : globalThis);

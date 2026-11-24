@@ -39,7 +39,7 @@
   async function loadChar(region, realm, name, ov) {
     const d = await getJson(profileUrl(region, realm, name));
     const m = E.memberFromRio(d, ov);
-    m.region = region; m.realmSlug = realm; m.crawled = d.last_crawled_at || null;
+    m.region = region; m.realmSlug = realm; m.crawled = d.last_crawled_at || null; m.key = `${region}/${realm}/${d.name}`;
     if (ov && ov.loadout) m.loadout = ov.loadout;
     m.autoSkill = null;
     return m;
@@ -240,9 +240,18 @@
       E.MODEL.bargainOverhead = Math.max(0, +$('#pBarg').value || 0) / 100;
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
+      const mode = $('#mode').value;
+      const hm = store.get('histModels', {})[teamKey()];
+      if (mode === 'hist' && !hm) throw new Error('Előbb töltsd be az előzményeket (Előzmények betöltése és illesztése), vagy válassz másik kalibrálást.');
+      members.forEach(m => { m.key = m.key || `${m.region}/${m.realmSlug}/${m.name}`; });
       setTimeout(() => {
+        if (mode === 'hist') {
+          const res = E.simulateHistory({ model: hm, members, pulls, idx: r.idx, levels, week: $('#week').value || null, timer, table: DATA.dps, runs: Math.min(5000, +$('#pRuns').value || 1500) });
+          renderSim(res, members, pulls, timer, r, d, true);
+          return;
+        }
         const res = E.simulate({ members, pulls, levels, week: $('#week').value || null, timer, table: DATA.dps,
-          calib: calT && calL ? { level: calL, time: calT } : null, runs: Math.min(5000, +$('#pRuns').value || 1500) });
+          calib: mode === 'one' && calT && calL ? { level: calL, time: calT } : null, runs: Math.min(5000, +$('#pRuns').value || 1500) });
         renderSim(res, members, pulls, timer, r, d, !!(calT && calL));
       }, 30);
     } catch (e) { out.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
@@ -251,11 +260,11 @@
     const chip = (t, v) => `<span class="chip">${t}: <b>${v ? '+' + v : '–'}</b></span>`;
     const col = v => v >= 0.85 ? 'var(--ok)' : v >= 0.6 ? 'var(--warn)' : v >= 0.3 ? '#e8884a' : 'var(--bad)';
     let h = `<div class="card"><div class="chips">${chip('Biztos (≥85%)', res.safe)}${chip('Javasolt (≥60%)', res.rec)}${chip('Próbálkozás (≥30%)', res.push)}</div>
-      <p class="note" style="margin:8px 0 0">${esc(d.name)} · timer ${fmtT(timer)} · ${cal ? `kalibrálva (hatékonyság ×${res.eff.toFixed(2)})` : 'nincs kalibrálva – becsült hatékonyság'}</p></div>`;
-    h += `<div class="scroll"><table><thead><tr><th>Kulcs</th><th>Medián</th><th>10–90%</th><th>Időben</th><th>+2</th><th>+3</th><th>Halál</th><th>Extra pull</th></tr></thead><tbody>` +
+      <p class="note" style="margin:8px 0 0">${esc(d.name)} · timer ${fmtT(timer)} · ${res.history ? `előzmény-modell: fix idő ${fmtT(res.A)}, csapat-szorzó ×${res.eff.toFixed(2)}, ${res.known}/${members.length} tag ismert, komfort +${res.comfort}` : cal ? `egy futásra kalibrálva (×${res.eff.toFixed(2)})` : 'nincs kalibrálva – becsült hatékonyság'}</p></div>`;
+    h += `<div class="scroll"><table><thead><tr><th>Kulcs</th><th>Medián</th><th>10–90%</th><th>Időben</th><th>+2</th><th>+3</th>${res.history ? '<th>Feladás</th>' : '<th>Halál</th><th>Extra pull</th>'}</tr></thead><tbody>` +
       res.rows.map(x => `<tr data-lv="${x.level}"><td><b>+${x.level}</b></td><td>${fmtT(x.median)}</td><td>${fmtT(x.p10)}–${fmtT(x.p90)}</td>
         <td><span style="color:${col(x.pTime)}">${pct(x.pTime)}</span><div class="bar"><i style="width:${x.pTime * 100}%;background:${col(x.pTime)}"></i></div></td>
-        <td>${pct(x.p2)}</td><td>${pct(x.p3)}</td><td>${x.deaths.toFixed(1)}</td><td>${x.extras.toFixed(1)}</td></tr>`).join('') + '</tbody></table></div>';
+        <td>${pct(x.p2)}</td><td>${pct(x.p3)}</td>${res.history ? `<td>${pct(x.abandon)}</td>` : `<td>${x.deaths.toFixed(1)}</td><td>${x.extras.toFixed(1)}</td>`}</tr>`).join('') + '</tbody></table></div>';
     h += `<p class="note">Koppints egy sorra a pullonkénti bontásért.</p><div id="pullBox"></div>`;
     h += `<h3>Csapat becsült sebzése</h3><div class="scroll"><table><thead><tr><th>Tag</th><th>1 célpont</th><th>5 célpont</th></tr></thead><tbody>` +
       members.map(m => `<tr><td style="color:${CLASS_COLOR[m.cls] || '#ccc'}">${esc(m.name)} <span class="sub">${esc(m.spec)}</span></td><td>${Math.round(m.estDps.st / 1000)}k</td><td>${Math.round(m.estDps.aoe / 1000)}k</td></tr>`).join('') +
@@ -264,7 +273,7 @@
     $('#simOut').innerHTML = h;
     $('#simOut').querySelectorAll('tr[data-lv]').forEach(tr => tr.onclick = () => {
       const x = res.rows.find(q => q.level === +tr.dataset.lv);
-      $('#pullBox').innerHTML = `<h3>+${x.level} pullonként (tiszta harcidő, kalibrálás és emberi tényező nélkül)</h3><div class="scroll"><table><thead><tr><th>Pull</th><th class="l">Mobok</th><th>Count</th><th>Idő</th></tr></thead><tbody>` +
+      $('#pullBox').innerHTML = `<h3>+${x.level} pullonként (${res.history ? 'harcidő a csapat-szorzóval, fix idő nélkül' : 'tiszta harcidő, kalibrálás és emberi tényező nélkül'})</h3><div class="scroll"><table><thead><tr><th>Pull</th><th class="l">Mobok</th><th>Count</th><th>Idő</th></tr></thead><tbody>` +
         pulls.map((p, i) => `<tr><td>${p.extra ? '＋' : i + 1}${p.lust ? ' ⚡' : ''}</td><td class="l">${esc([...new Set(p.mobs.map(m => m.n))].join(', '))}</td><td>${p.count}</td><td>${fmtT(x.pulls[i])}</td></tr>`).join('') +
         `</tbody></table></div><p class="note">⚡ = lust (az MDT jegyzetből, vagy az első pull). ＋ = a route-ból hiányzó count pótlása (automatikus extra pull).</p>`;
       $('#pullBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -312,6 +321,73 @@
     } catch (e) { out.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
 
+  // ------------------------------------------------ ELŐZMÉNY-KALIBRÁLÁS
+  const teamKey = () => team.filter(Boolean).map(m => m.key || `${m.region}/${m.realmSlug}/${m.name}`).sort().join('|');
+  const syncMode = () => { const v = $('#mode').value; $('#histBox').hidden = v !== 'hist'; $('#oneBox').hidden = v !== 'one'; };
+  $('#mode').onchange = () => { syncMode(); store.set('mode', $('#mode').value); };
+  function slimRoster(rd) {
+    return (rd.roster || []).map(r => { const c = r.character || {}, it = (r.items && r.items.items) || {};
+      const items = {}; for (const [k, v] of Object.entries(it)) if (v) items[k] = { enchant: v.enchant || (v.enchants && v.enchants[0]) || 0, tier: v.tier || null };
+      return { role: r.role, character: { name: c.name, region: { slug: c.region && c.region.slug }, realm: { slug: c.realm && c.realm.slug }, class: { name: c.class && c.class.name }, spec: { name: c.spec && c.spec.name, role: c.spec && c.spec.role } },
+        items: { item_level_equipped: r.items ? r.items.item_level_equipped : 0, items } }; });
+  }
+  async function pool(tasks, n, onDone) {
+    let i = 0; const out = [];
+    await Promise.all(Array.from({ length: n }, async () => { while (i < tasks.length) { const k = i++; try { out[k] = await tasks[k](); } catch (e) { out[k] = null; } onDone(); } }));
+    return out;
+  }
+  $('#btnHist').onclick = async () => {
+    const out = $('#histOut'), btn = $('#btnHist');
+    const mem = team.filter(Boolean);
+    if (!mem.length) { out.innerHTML = '<p class="err">Előbb adj hozzá csapattagokat.</p>'; return; }
+    btn.disabled = true;
+    try {
+      out.innerHTML = '<p class="note"><span class="spin"></span> Futások listája…</p>';
+      const runMap = {};
+      for (const m of mem) {
+        const d = await getJson(`${RIO}/api/v1/characters/profile?region=${m.region}&realm=${encodeURIComponent(m.realmSlug)}&name=${encodeURIComponent(m.name)}&fields=mythic_plus_recent_runs,mythic_plus_best_runs,mythic_plus_alternate_runs`);
+        for (const r of [].concat(d.mythic_plus_recent_runs || [], d.mythic_plus_best_runs || [], d.mythic_plus_alternate_runs || [])) {
+          const se = /mythic-plus-runs\/([^/]+)\//.exec(r.url || ''); if (!se) continue;
+          runMap[r.keystone_run_id] = { id: r.keystone_run_id, season: se[1], mapId: r.map_challenge_mode_id, level: r.mythic_level, time: r.clear_time_ms / 1000,
+            timer: r.par_time_ms / 1000, upgrades: r.num_keystone_upgrades, affixes: (r.affixes || []).map(a => a.name), dungeon: r.dungeon };
+          timers[r.dungeon] = Math.round(r.par_time_ms / 1000);
+        }
+      }
+      store.set('timers', timers);
+      const list = Object.values(runMap);
+      let done = 0;
+      const cache = store.get('runcache', {});
+      const tasks = list.map(r => async () => {
+        if (cache[r.id]) return cache[r.id];
+        const rd = await getJson(`${RIO}/api/v1/mythic-plus/run-details?season=${r.season}&id=${r.id}`);
+        return (cache[r.id] = slimRoster(rd));
+      });
+      const prog = () => { done++; out.innerHTML = `<p class="note"><span class="spin"></span> Futások részletei: ${done}/${list.length}</p>`; };
+      const rosters = await pool(tasks, 3, prog);
+      store.set('runcache', cache);
+      list.forEach((r, k) => { r.roster = rosters[k]; });
+      const model = E.fitHistory(list.filter(r => r.roster), DATA.dungeons, DATA.dps);
+      if (!model.ok) { out.innerHTML = `<p class="err">${esc(model.reason)}</p>`; btn.disabled = false; return; }
+      const saved = store.get('histModels', {}); saved[teamKey()] = Object.assign(model, { at: Date.now() }); store.set('histModels', saved);
+      renderHist(model);
+    } catch (e) { out.innerHTML = `<p class="err">Hiba: ${esc(e.message)}</p>`; }
+    btn.disabled = false;
+  };
+  function renderHist(m) {
+    const mem = team.filter(Boolean);
+    const eff = u => Math.round(100 / Math.exp(u));
+    let h = `<p class="ok">Illesztve ${m.n} futásból · átlagos eltérés ${fmtT(m.mae)} · szórás ±${Math.round(m.sigma * 100)}%${m.at ? ' · ' + esc(new Date(m.at).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</p>`;
+    h += `<div class="scroll"><table><thead><tr><th class="l">Játékos</th><th>Hatékonyság</th><th>Futás</th></tr></thead><tbody>` +
+      mem.map(x => { const e = m.playerEff[(x.key || '').toLowerCase()]; return `<tr><td class="l" style="color:${CLASS_COLOR[x.cls] || '#ccc'}">${esc(x.name)}</td><td>${e ? eff(e.u) + '%' : '–'}</td><td>${e ? e.n : 0}</td></tr>`; }).join('') + '</tbody></table></div>';
+    h += `<p class="note">100% = átlagos; nagyobb = gyorsabb a vártnál. Kevés futásnál 100% felé húzódik.</p>`;
+    h += `<details><summary>Dungeonok fix ideje és a futások</summary><div class="scroll"><table><thead><tr><th class="l">Dungeon</th><th>Fix idő</th></tr></thead><tbody>` +
+      Object.entries(m.A).map(([i, a]) => `<tr><td class="l">${esc(DATA.dungeons[i].name)}</td><td>${fmtT(a)}</td></tr>`).join('') + '</tbody></table></div>' +
+      `<div class="scroll"><table><thead><tr><th class="l">Futás</th><th>Valódi</th><th>Modell</th></tr></thead><tbody>` +
+      m.runs.slice().sort((a, b) => a.dungeon.localeCompare(b.dungeon) || a.level - b.level).map(r => `<tr><td class="l">${esc(r.dungeon)} +${r.level}${r.timed ? '' : ' <span class="bad">✗</span>'}</td><td>${fmtT(r.T)}</td><td>${fmtT(r.pred)}</td></tr>`).join('') +
+      '</tbody></table></div></details>';
+    $('#histOut').innerHTML = h;
+  }
+
   // heti affixok a Raider.io-ról: a +7-es affix az, amelyik előbb szerepel a listában
   async function loadAffixes() {
     try {
@@ -335,5 +411,7 @@
     $('#region').onchange = e => { store.set('region', e.target.value); loadAffixes(); };
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
     loadAffixes();
+    $('#mode').value = store.get('mode', 'hist'); syncMode();
+    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0) renderHist(hm0);
   })();
 }
