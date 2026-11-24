@@ -241,7 +241,7 @@
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
       const mode = $('#mode').value;
-      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 4) hm = null;
+      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 5) hm = null;
       if (mode === 'hist' && !hm) throw new Error('Előbb töltsd be az előzményeket (Előzmények betöltése és illesztése), vagy válassz másik kalibrálást.');
       members.forEach(m => { m.key = (m.key || `${m.region}/${m.realmSlug}/${m.name}`).toLowerCase(); });
       setTimeout(() => {
@@ -260,7 +260,7 @@
     const chip = (t, v) => `<span class="chip">${t}: <b>${v ? '+' + v : '–'}</b></span>`;
     const col = v => v >= 0.85 ? 'var(--ok)' : v >= 0.6 ? 'var(--warn)' : v >= 0.3 ? '#e8884a' : 'var(--bad)';
     let h = `<div class="card"><div class="chips">${chip('Biztos (≥85%)', res.safe)}${chip('Javasolt (≥60%)', res.rec)}${chip('Próbálkozás (≥30%)', res.push)}</div>
-      <p class="note" style="margin:8px 0 0">${esc(d.name)} · timer ${fmtT(timer)} · ${res.history ? `előzmény-modell: fix idő ${fmtT(res.A)}, a csapat ${res.vsPug <= 1 ? Math.round((1 / res.vsPug - 1) * 100) + '%-kal gyorsabb' : Math.round((res.vsPug - 1) * 100) + '%-kal lassabb'} egy PUG-nál, ${res.known}/${members.length} tag ismert, komfort +${res.comfort}` : cal ? `egy futásra kalibrálva (×${res.eff.toFixed(2)})` : 'nincs kalibrálva – becsült hatékonyság'}</p></div>`;
+      <p class="note" style="margin:8px 0 0">${esc(d.name)} · timer ${fmtT(timer)} · ${res.history ? `előzmény-modell: fix idő ${fmtT(res.A)}, a csapat ${res.vsPug <= 1 ? Math.round((1 / res.vsPug - 1) * 100) + '%-kal gyorsabb' : Math.round((res.vsPug - 1) * 100) + '%-kal lassabb'} egy +10-es PUG-nál, ${res.known}/${members.length} tag ismert, komfort +${res.comfort}` : cal ? `egy futásra kalibrálva (×${res.eff.toFixed(2)})` : 'nincs kalibrálva – becsült hatékonyság'}</p></div>`;
     h += `<div class="scroll"><table><thead><tr><th>Kulcs</th><th>Medián</th><th>10–90%</th><th>Időben</th><th>+2</th><th>+3</th>${res.history ? '<th>Feladás</th>' : '<th>Halál</th><th>Extra pull</th>'}</tr></thead><tbody>` +
       res.rows.map(x => `<tr data-lv="${x.level}"><td><b>+${x.level}</b></td><td>${fmtT(x.median)}</td><td>${fmtT(x.p10)}–${fmtT(x.p90)}</td>
         <td><span style="color:${col(x.pTime)}">${pct(x.pTime)}</span><div class="bar"><i style="width:${x.pTime * 100}%;background:${col(x.pTime)}"></i></div></td>
@@ -379,7 +379,8 @@
     const uT = keys.reduce((a, k) => a + (m.playerEff[k] ? m.playerEff[k].u : (m.mu || 0)), 0) / keys.length;
     const vs = Math.exp(uT - (m.mu || 0));
     let h = `<p class="ok">Illesztve ${m.n} futásból · átlagos eltérés ${fmtT(m.mae)} · szórás ±${Math.round(m.sigma * 100)}%${m.at ? ' · ' + esc(new Date(m.at).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</p>`;
-    h += `<p><b>Ez a csapat ${vs <= 1 ? Math.round((1 / vs - 1) * 100) + '%-kal gyorsabb' : Math.round((vs - 1) * 100) + '%-kal lassabb'}</b> egy átlagos PUG-csapatnál (ugyanazon a kulcson és dungeonban).</p>`;
+    h += `<p><b>Ez a csapat ${vs <= 1 ? Math.round((1 / vs - 1) * 100) + '%-kal gyorsabb' : Math.round((vs - 1) * 100) + '%-kal lassabb'}</b> egy átlagos +10-es PUG-csapatnál.</p>`;
+    h += `<p class="note">PUG-ok kulcsszint szerint: szintenként ${Math.abs((1 - Math.exp(m.mu1 || 0)) * 100).toFixed(1)}%-kal ${(m.mu1 || 0) <= 0 ? 'gyorsabbak' : 'lassabbak'} (magasabb kulcson jobb játékosok).</p>`;
     h += `<div class="scroll"><table><thead><tr><th class="l">Játékos</th><th>Futás az adatokban</th></tr></thead><tbody>` +
       mem.map((x, i) => { const e = m.playerEff[keys[i]]; return `<tr><td class="l" style="color:${CLASS_COLOR[x.cls] || '#ccc'}">${esc(x.name)}</td><td>${e ? e.n : 0}</td></tr>`; }).join('') + '</tbody></table></div>';
     h += `<p class="note">${m.together} futásban volt együtt a teljes csapat. Egyéni hatékonyságot nem mutatok: aki minden futásban benne van, annak a hatása nem választható szét a többiekétől – a csapat együttes értéke viszont megbízható.</p>`;
@@ -416,6 +417,6 @@
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
     loadAffixes();
     $('#mode').value = store.get('mode', 'hist'); syncMode();
-    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 4) renderHist(hm0);
+    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 5) renderHist(hm0);
   })();
 }

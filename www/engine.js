@@ -509,20 +509,21 @@
     }
     if (obs.length < 3) return { ok: false, n: obs.length, reason: 'Kevés használható futás (legalább 3 kell).' };
     const Dg = [...new Set(obs.map(o => o.idx))];
-    const th = { a: 0.35, beta: 0, delta: 0, mu: 0, alpha: Object.fromEntries(Dg.map(d => [d, 0])), u: focus.map(() => 0) };
+    const th = { a: 0.35, beta: 0, delta: 0, mu: 0, mu1: 0, alpha: Object.fromEntries(Dg.map(d => [d, 0])), u: focus.map(() => 0) };
     const pred = (o, t = th) => Math.log(t.a * o.timer * Math.exp(t.alpha[o.idx]) + o.C * Math.exp(t.beta)) + t.delta * (o.level - 10)
-      + (o.fi.reduce((s2, i) => s2 + t.u[i], 0) + o.nOther * t.mu) / o.n;
+      + (o.fi.reduce((s2, i) => s2 + t.u[i], 0) + o.nOther * (t.mu + t.mu1 * (o.level - 10))) / o.n;
     let sigma = 0.12;
     const J = () => obs.reduce((s2, o) => s2 + (o.lT - pred(o)) ** 2, 0) / (sigma * sigma)
       + ((th.a - 0.35) / 0.15) ** 2 + (th.beta / 0.5) ** 2 + (th.delta / 0.05) ** 2
-      + Object.values(th.alpha).reduce((s2, x) => s2 + (x / 0.15) ** 2, 0) + th.u.reduce((s2, x) => s2 + (x / 0.2) ** 2, 0) + (th.mu / 0.3) ** 2;
+      + Object.values(th.alpha).reduce((s2, x) => s2 + (x / 0.15) ** 2, 0) + th.u.reduce((s2, x) => s2 + (x / 0.2) ** 2, 0) + (th.mu / 0.3) ** 2 + (th.mu1 / 0.05) ** 2;
     const golden = (get, set, lo, hi) => { for (let g = 0; g < 40; g++) { const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618;
       set(m1); const f1 = J(); set(m2); const f2 = J(); if (f1 < f2) hi = m2; else lo = m1; } set((lo + hi) / 2); };
     for (let it = 0; it < opt.iters; it++) {
       golden(() => th.a, v => { th.a = v; }, 0.05, 0.8);
       golden(() => th.beta, v => { th.beta = v; }, -1.5, 1.5);
-      golden(() => th.delta, v => { th.delta = v; }, -0.1, 0.2);
+      golden(() => th.delta, v => { th.delta = v; }, 0, 0.2);
       golden(() => th.mu, v => { th.mu = v; }, -1, 1);
+      golden(() => th.mu1, v => { th.mu1 = v; }, -0.15, 0);
       for (const d of Dg) golden(() => th.alpha[d], v => { th.alpha[d] = v; }, -0.6, 0.6);
       for (let i = 0; i < th.u.length; i++) golden(() => th.u[i], v => { th.u[i] = v; }, -1, 1);
       const rs = obs.map(o => o.lT - pred(o));
@@ -535,7 +536,7 @@
     const playerEff = {}; focus.forEach((k, i) => { playerEff[k] = { u: th.u[i], n: obs.filter(o => o.fi.includes(i)).length }; });
     const A = {}, timerOf = {}; Dg.forEach(d => { const o = obs.find(x => x.idx === d); timerOf[d] = o.timer; A[d] = th.a * o.timer * Math.exp(th.alpha[d]); });
     const together = obs.filter(o => o.fi.length >= Math.min(5, focus.length) && focus.length).length;
-    return { ok: true, v: 4, n: obs.length, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, sigma, A, timerOf, playerEff, comfortOf, mae, together,
+    return { ok: true, v: 5, n: obs.length, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, mu1: th.mu1, sigma, A, timerOf, playerEff, comfortOf, mae, together,
       resid: rs.map(x => x - mean), focus,
       runs: obs.map(o => ({ dungeon: dungeons[o.idx].name, level: o.level, T: o.T, pred: Math.exp(pred(o)), timed: o.r.upgrades > 0 })) };
   }
@@ -546,8 +547,9 @@
     const mem = members.map(m => Object.assign({}, m, { skill: 1 }));
     const keys = members.map(m => (m.key || '').toLowerCase());
     const known = keys.filter(k => model.playerEff[k]).length;
-    const uOf = k => model.playerEff[k] ? model.playerEff[k].u : model.mu;   // ismeretlen tag: PUG-átlag
-    const uTeam = keys.reduce((a, k) => a + uOf(k), 0) / keys.length;
+    const muL = L => model.mu + (model.mu1 || 0) * (L - 10);                  // PUG-átlag az adott kulcsszinten
+    const uTeamL = L => keys.reduce((a, k) => a + (model.playerEff[k] ? model.playerEff[k].u : muL(L)), 0) / keys.length;
+    const uTeam = uTeamL(10);
     const alpha = model.th.alpha[idx] != null ? model.th.alpha[idx] : 0;
     const A = model.a * timer * Math.exp(alpha);
     const cs = keys.map((k, i) => model.comfortOf[k] || members[i].comfort).sort((a, b) => a - b);
@@ -560,7 +562,7 @@
     const Cm = Math.exp(model.beta);
     const rows = levels.map(L => {
       const C = pulls.reduce((a, p) => a + pullTime(p, L, week, T0), 0);
-      const pred = (A + C * Cm) * Math.exp(model.delta * (L - 10) + uTeam);
+      const pred = (A + C * Cm) * Math.exp(model.delta * (L - 10) + uTeamL(L));
       const beyond = Math.max(0, L - comfort - 1);            // a csapat által már időben lefutott szint fölött
       const ts = [], N = runs || 3000; let dep = 0;
       for (let i = 0; i < N; i++) {
@@ -572,11 +574,11 @@
       const fin = ts.filter(isFinite).sort((a, b) => a - b), q = f => fin.length ? fin[Math.min(fin.length - 1, Math.floor(f * fin.length))] : Infinity;
       return { level: L, median: q(0.5), p10: q(0.1), p90: q(0.9), pTime: ts.filter(t => t <= timer).length / N,
         p2: ts.filter(t => t <= timer * MODEL.chest2).length / N, p3: ts.filter(t => t <= timer * MODEL.chest3).length / N,
-        deaths: NaN, extras: NaN, abandon: dep / N, pulls: pulls.map(p => pullTime(p, L, week, T0) * Cm * Math.exp(model.delta * (L - 10) + uTeam)), fixed: A };
+        deaths: NaN, extras: NaN, abandon: dep / N, pulls: pulls.map(p => pullTime(p, L, week, T0) * Cm * Math.exp(model.delta * (L - 10) + uTeamL(L))), fixed: A };
     });
     const top = th => { const ok = rows.filter(x => x.pTime >= th); return ok.length ? ok[ok.length - 1].level : null; };
     return { rows, eff: Math.exp(uTeam), cmult: Cm, team: T0, safe: top(0.85), rec: top(0.6), push: top(0.3), history: true, known, comfort,
-      A: A * Math.exp(uTeam), vsPug: Math.exp(uTeam - model.mu) };
+      A: A * Math.exp(uTeam), vsPug: Math.exp(uTeam - model.mu), mu1: model.mu1 || 0 };
   }
 
   G.Engine = { MODEL, KNOWN_TIMERS, decodeRoute, buildPulls, memberFromRio, finishMember, simulate, audit, hpMult, keyScale, teamDps, pullTime, refPulls, fitHistory, simulateHistory, memberFromRoster, weekOf };
