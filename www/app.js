@@ -241,7 +241,7 @@
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
       const mode = $('#mode').value;
-      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 3) hm = null;
+      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 4) hm = null;
       if (mode === 'hist' && !hm) throw new Error('Előbb töltsd be az előzményeket (Előzmények betöltése és illesztése), vagy válassz másik kalibrálást.');
       members.forEach(m => { m.key = (m.key || `${m.region}/${m.realmSlug}/${m.name}`).toLowerCase(); });
       setTimeout(() => {
@@ -376,13 +376,14 @@
   function renderHist(m) {
     const mem = team.filter(Boolean);
     const keys = mem.map(x => (x.key || `${x.region}/${x.realmSlug}/${x.name}`).toLowerCase());
-    const uT = keys.reduce((a, k) => a + ((m.playerEff[k] || {}).u || 0), 0) / keys.length;
+    const uT = keys.reduce((a, k) => a + (m.playerEff[k] ? m.playerEff[k].u : (m.mu || 0)), 0) / keys.length;
     const vs = Math.exp(uT - (m.mu || 0));
     let h = `<p class="ok">Illesztve ${m.n} futásból · átlagos eltérés ${fmtT(m.mae)} · szórás ±${Math.round(m.sigma * 100)}%${m.at ? ' · ' + esc(new Date(m.at).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}</p>`;
     h += `<p><b>Ez a csapat ${vs <= 1 ? Math.round((1 / vs - 1) * 100) + '%-kal gyorsabb' : Math.round((vs - 1) * 100) + '%-kal lassabb'}</b> egy átlagos PUG-csapatnál (ugyanazon a kulcson és dungeonban).</p>`;
     h += `<div class="scroll"><table><thead><tr><th class="l">Játékos</th><th>Futás az adatokban</th></tr></thead><tbody>` +
       mem.map((x, i) => { const e = m.playerEff[keys[i]]; return `<tr><td class="l" style="color:${CLASS_COLOR[x.cls] || '#ccc'}">${esc(x.name)}</td><td>${e ? e.n : 0}</td></tr>`; }).join('') + '</tbody></table></div>';
     h += `<p class="note">${m.together} futásban volt együtt a teljes csapat. Egyéni hatékonyságot nem mutatok: aki minden futásban benne van, annak a hatása nem választható szét a többiekétől – a csapat együttes értéke viszont megbízható.</p>`;
+    h += `<p class="note">Fix idő ≈ a timer ${Math.round(m.a * 100)}%-a · harcidő-szorzó ×${Math.exp(m.beta).toFixed(2)} · kulcsszintenként ${m.delta >= 0 ? '+' : ''}${(m.delta * 100).toFixed(1)}% idő</p>`;
     h += `<details><summary>Dungeonok fix ideje és a futások</summary><div class="scroll"><table><thead><tr><th class="l">Dungeon</th><th>Fix idő</th></tr></thead><tbody>` +
       Object.entries(m.A).map(([i, a]) => `<tr><td class="l">${esc(DATA.dungeons[i].name)}</td><td>${fmtT(a)}</td></tr>`).join('') + '</tbody></table></div>' +
       `<div class="scroll"><table><thead><tr><th class="l">Futás</th><th>Valódi</th><th>Modell</th></tr></thead><tbody>` +
@@ -415,6 +416,6 @@
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
     loadAffixes();
     $('#mode').value = store.get('mode', 'hist'); syncMode();
-    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 3) renderHist(hm0);
+    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 4) renderHist(hm0);
   })();
 }
