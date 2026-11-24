@@ -1,0 +1,42 @@
+name: Android APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Függőségek
+        run: npm install
+      - name: Android projekt
+        run: |
+          npx cap add android
+          npx cap sync android
+      - name: APK fordítás
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          cp app/build/outputs/apk/debug/app-debug.apk ../MPlusSim.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MPlusSim-apk
+          path: MPlusSim.apk
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: M+ Szimulátor 1.0.${{ github.run_number }}
+          files: MPlusSim.apk
+          make_latest: true

@@ -1,0 +1,7 @@
+{
+  "appId": "hu.horvath.mplussim",
+  "appName": "M+ Szimulátor",
+  "webDir": "www",
+  "plugins": { "CapacitorHttp": { "enabled": true } },
+  "android": { "backgroundColor": "#0f1216" }
+}

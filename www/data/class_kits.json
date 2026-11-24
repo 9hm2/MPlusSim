@@ -1,0 +1,146 @@
+{
+ "_megjegyzes": "Class/spec eszkozkeszlet. 'talent': ha meg van adva, csak akkor szamit, ha a Raider.io talent-listaban szerepel. 'specs': csak ezekre a specekre. Szerkesztheto.",
+ "deathknight": [
+  {"n":"Mind Freeze","t":"kick","cd":15},
+  {"n":"Asphyxiate","t":"stun","cd":45,"talent":"Asphyxiate"},
+  {"n":"Blinding Sleet","t":"disorient_aoe","cd":60,"talent":"Blinding Sleet"},
+  {"n":"Death Grip","t":"grip","cd":25},
+  {"n":"Gorefiend's Grasp","t":"grip_aoe","cd":120,"specs":["blood"]},
+  {"n":"Raise Ally","t":"bres","cd":600},
+  {"n":"Anti-Magic Shell","t":"def_magic","cd":60},
+  {"n":"Icebound Fortitude","t":"def","cd":120}
+ ],
+ "demonhunter": [
+  {"n":"Disrupt","t":"kick","cd":15},
+  {"n":"Consume Magic","t":"purge","cd":10},
+  {"n":"Chaos Nova","t":"stun_aoe","cd":45,"talent":"Chaos Nova"},
+  {"n":"Sigil of Misery","t":"disorient_aoe","cd":90,"talent":"Sigil of Misery"},
+  {"n":"Sigil of Silence","t":"silence_aoe","cd":90,"talent":"Sigil of Silence"},
+  {"n":"Imprison","t":"incap","cd":45,"talent":"Imprison"},
+  {"n":"Blur","t":"def","cd":60}
+ ],
+ "druid": [
+  {"n":"Skull Bash","t":"kick","cd":15,"specs":["feral","guardian"]},
+  {"n":"Solar Beam","t":"kick","cd":60,"specs":["balance"]},
+  {"n":"Remove Corruption","t":"dispel","types":["curse","poison"],"cd":8,"specs":["balance","feral","guardian"]},
+  {"n":"Nature's Cure","t":"dispel","types":["magic","curse","poison"],"cd":8,"specs":["restoration"]},
+  {"n":"Soothe","t":"soothe","cd":10},
+  {"n":"Incapacitating Roar","t":"incap_aoe","cd":60,"talent":"Incapacitating Roar"},
+  {"n":"Mighty Bash","t":"stun","cd":60,"talent":"Mighty Bash"},
+  {"n":"Typhoon","t":"knock_aoe","cd":30,"talent":"Typhoon"},
+  {"n":"Ursol's Vortex","t":"grip_aoe","cd":60,"talent":"Ursol's Vortex"},
+  {"n":"Rebirth","t":"bres","cd":600},
+  {"n":"Barkskin","t":"def","cd":60}
+ ],
+ "evoker": [
+  {"n":"Quell","t":"kick","cd":20},
+  {"n":"Expunge","t":"dispel","types":["poison"],"cd":8,"specs":["devastation","augmentation"],"talent":"Expunge"},
+  {"n":"Naturalize","t":"dispel","types":["magic","poison"],"cd":8,"specs":["preservation"]},
+  {"n":"Cauterizing Flame","t":"dispel","types":["bleed","poison","curse","disease"],"cd":60,"talent":"Cauterizing Flame"},
+  {"n":"Oppressing Roar","t":"soothe","cd":120,"talent":"Overawe"},
+  {"n":"Sleep Walk","t":"disorient","cd":15,"talent":"Sleep Walk"},
+  {"n":"Landslide","t":"root_aoe","cd":90,"talent":"Landslide"},
+  {"n":"Tail Swipe","t":"knock_aoe","cd":90},
+  {"n":"Wing Buffet","t":"knock_aoe","cd":90},
+  {"n":"Fury of the Aspects","t":"lust","cd":300},
+  {"n":"Obsidian Scales","t":"def","cd":90,"talent":"Obsidian Scales"}
+ ],
+ "hunter": [
+  {"n":"Counter Shot","t":"kick","cd":24,"specs":["beast_mastery","marksmanship"]},
+  {"n":"Muzzle","t":"kick","cd":15,"specs":["survival"]},
+  {"n":"Tranquilizing Shot","t":"purge","cd":10,"soothe":true,"talent":"Tranquilizing Shot"},
+  {"n":"Freezing Trap","t":"incap","cd":30},
+  {"n":"Binding Shot","t":"stun_aoe","cd":45,"talent":"Binding Shot"},
+  {"n":"Intimidation","t":"stun","cd":60,"talent":"Intimidation"},
+  {"n":"Primal Rage (pet)","t":"lust","cd":360},
+  {"n":"Aspect of the Turtle","t":"immune","cd":180}
+ ],
+ "mage": [
+  {"n":"Counterspell","t":"kick","cd":24},
+  {"n":"Spellsteal","t":"purge","cd":0},
+  {"n":"Remove Curse","t":"dispel","types":["curse"],"cd":8,"talent":"Remove Curse"},
+  {"n":"Polymorph","t":"incap","cd":0},
+  {"n":"Dragon's Breath","t":"disorient_aoe","cd":45,"talent":"Dragon's Breath"},
+  {"n":"Ring of Frost","t":"incap_aoe","cd":45,"talent":"Ring of Frost"},
+  {"n":"Blast Wave","t":"knock_aoe","cd":30,"talent":"Blast Wave"},
+  {"n":"Time Warp","t":"lust","cd":300},
+  {"n":"Ice Block","t":"immune","cd":240}
+ ],
+ "monk": [
+  {"n":"Spear Hand Strike","t":"kick","cd":15},
+  {"n":"Detox","t":"dispel","types":["poison","disease"],"cd":8,"specs":["brewmaster","windwalker"]},
+  {"n":"Detox","t":"dispel","types":["magic","poison","disease"],"cd":8,"specs":["mistweaver"]},
+  {"n":"Leg Sweep","t":"stun_aoe","cd":60},
+  {"n":"Paralysis","t":"incap","cd":45},
+  {"n":"Ring of Peace","t":"knock_aoe","cd":45,"talent":"Ring of Peace"},
+  {"n":"Fortifying Brew","t":"def","cd":120}
+ ],
+ "paladin": [
+  {"n":"Rebuke","t":"kick","cd":15},
+  {"n":"Avenger's Shield","t":"kick","cd":15,"specs":["protection"]},
+  {"n":"Cleanse Toxins","t":"dispel","types":["poison","disease"],"cd":8,"specs":["protection","retribution"],"talent":"Cleanse Toxins"},
+  {"n":"Cleanse","t":"dispel","types":["magic","poison","disease"],"cd":8,"specs":["holy"]},
+  {"n":"Hammer of Justice","t":"stun","cd":45},
+  {"n":"Blinding Light","t":"disorient_aoe","cd":90,"talent":"Blinding Light"},
+  {"n":"Repentance","t":"incap","cd":15,"talent":"Repentance"},
+  {"n":"Intercession","t":"bres","cd":600},
+  {"n":"Blessing of Freedom","t":"freedom","cd":25},
+  {"n":"Divine Shield","t":"immune","cd":300},
+  {"n":"Blessing of Protection","t":"ext_immune_phys","cd":300}
+ ],
+ "priest": [
+  {"n":"Silence","t":"kick","cd":45,"specs":["shadow"]},
+  {"n":"Purify","t":"dispel","types":["magic","disease"],"cd":8,"specs":["holy","discipline"]},
+  {"n":"Purify Disease","t":"dispel","types":["disease"],"cd":8,"specs":["shadow"],"talent":"Purify Disease"},
+  {"n":"Mass Dispel","t":"dispel_aoe","types":["magic"],"cd":120,"talent":"Mass Dispel"},
+  {"n":"Dispel Magic","t":"purge","cd":0},
+  {"n":"Psychic Scream","t":"fear_aoe","cd":45},
+  {"n":"Holy Word: Chastise","t":"stun","cd":60,"specs":["holy"]},
+  {"n":"Shackle Undead","t":"incap","cd":0},
+  {"n":"Power Infusion","t":"buff","cd":120},
+  {"n":"Desperate Prayer","t":"def","cd":90}
+ ],
+ "rogue": [
+  {"n":"Kick","t":"kick","cd":15},
+  {"n":"Kidney Shot","t":"stun","cd":30},
+  {"n":"Cheap Shot","t":"stun","cd":0},
+  {"n":"Blind","t":"disorient","cd":120,"talent":"Blind"},
+  {"n":"Gouge","t":"incap","cd":25,"talent":"Gouge"},
+  {"n":"Shiv","t":"soothe","cd":25},
+  {"n":"Cloak of Shadows","t":"self_cleanse_magic","cd":120,"talent":"Cloak of Shadows"},
+  {"n":"Evasion","t":"def_phys","cd":120,"talent":"Evasion"},
+  {"n":"Feint","t":"def_aoe","cd":15}
+ ],
+ "shaman": [
+  {"n":"Wind Shear","t":"kick","cd":12},
+  {"n":"Purge","t":"purge","cd":0},
+  {"n":"Cleanse Spirit","t":"dispel","types":["curse"],"cd":8,"specs":["elemental","enhancement"],"talent":"Cleanse Spirit"},
+  {"n":"Purify Spirit","t":"dispel","types":["magic","curse"],"cd":8,"specs":["restoration"]},
+  {"n":"Poison Cleansing Totem","t":"dispel","types":["poison"],"cd":45,"talent":"Poison Cleansing Totem"},
+  {"n":"Capacitor Totem","t":"stun_aoe","cd":60,"talent":"Capacitor Totem"},
+  {"n":"Hex","t":"incap","cd":30,"talent":"Hex"},
+  {"n":"Thunderstorm","t":"knock_aoe","cd":30,"talent":"Thunderstorm"},
+  {"n":"Bloodlust","t":"lust","cd":300},
+  {"n":"Astral Shift","t":"def","cd":120}
+ ],
+ "warlock": [
+  {"n":"Spell Lock (Felhunter)","t":"kick","cd":24,"specs":["affliction","destruction"]},
+  {"n":"Axe Toss (Felguard)","t":"kick","cd":30,"specs":["demonology"]},
+  {"n":"Devour Magic (Felhunter)","t":"purge","cd":15,"specs":["affliction","destruction"]},
+  {"n":"Fear","t":"disorient","cd":0},
+  {"n":"Shadowfury","t":"stun_aoe","cd":60,"talent":"Shadowfury"},
+  {"n":"Mortal Coil","t":"incap","cd":45,"talent":"Mortal Coil"},
+  {"n":"Banish","t":"incap","cd":0},
+  {"n":"Soulstone","t":"bres","cd":600},
+  {"n":"Unending Resolve","t":"def","cd":180}
+ ],
+ "warrior": [
+  {"n":"Pummel","t":"kick","cd":15},
+  {"n":"Shockwave","t":"stun_aoe","cd":40,"talent":"Shockwave"},
+  {"n":"Storm Bolt","t":"stun","cd":30,"talent":"Storm Bolt"},
+  {"n":"Intimidating Shout","t":"fear_aoe","cd":90,"talent":"Intimidating Shout"},
+  {"n":"Spell Reflection","t":"def_magic","cd":25},
+  {"n":"Shattering Throw","t":"purge_immunity","cd":180},
+  {"n":"Rallying Cry","t":"def_aoe","cd":180}
+ ]
+}
