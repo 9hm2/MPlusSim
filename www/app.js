@@ -541,6 +541,13 @@
         : `<circle cx="${m.x}" cy="${m.y}" r="${r}" fill="${col}" stroke="${stroke}" stroke-width="${sw}"${m.e.skip ? ' fill-opacity=".35"' : ''}/>`;
       if (pi >= 0 && m.e.b) svg += `<text x="${m.x}" y="${m.y + 2.6}" font-size="7" text-anchor="middle" fill="#000" font-weight="700">${pi + 1}</text>`;
     }
+    // bejárat és átjárók (MDT POI)
+    for (const q of (d.poi || []).filter(q => (q.sub || 1) === PL.sub)) {
+      const x = q.x, y = -q.y, ent = q.t === 'dungeonEntrance', col = ent ? '#3ddc84' : '#b388ff', lab = ent ? 'Bejárat' : 'Átjáró';
+      svg += `<circle cx="${x}" cy="${y}" r="9" fill="${col}" fill-opacity=".25" stroke="${col}" stroke-width="1.6"/>`
+        + (ent ? `<path d="M${x - 3.5} ${y + 4}v-6.5a3.5 3.5 0 0 1 7 0v6.5z" fill="${col}"/>` : `<circle cx="${x}" cy="${y}" r="3.5" fill="${col}"/>`)
+        + `<text x="${x}" y="${y - 12}" font-size="8" text-anchor="middle" fill="#fff" stroke="#000" stroke-width="2.5" paint-order="stroke" font-weight="700">${lab}</text>`;
+    }
     // pullszámok a csoportok fölé
     pulls.forEach((p, i) => {
       const pts = []; for (const [ei, cs] of Object.entries(p.sel)) for (const ci of cs) { const m = mobs.find(x => x.ei === ei && x.ci === ci); if (m && m.sub === PL.sub && !m.e.b) pts.push(m); }
@@ -554,7 +561,8 @@
     box.style.height = Math.min(window.innerHeight * 0.58, pxH + 2) + 'px';
     if (fit) {
       const cur = []; for (const [ei, cs] of Object.entries(pulls[PL.cur].sel)) for (const ci of cs) { const m = vis.find(x => x.ei === ei && x.ci === ci); if (m) cur.push(m); }
-      centerOn(cur.length ? cur : vis.slice(0, 8));
+      const ent = (d.poi || []).filter(q => q.t === 'dungeonEntrance' && (q.sub || 1) === PL.sub).map(q => ({ x: q.x, y: -q.y }));
+      centerOn(cur.length ? cur : ent.length ? ent : vis.slice(0, 8));
     } else { box.scrollLeft = sx; box.scrollTop = sy; }
     box.querySelectorAll('[data-e]').forEach(c => c.onclick = () => toggle(c.dataset.e, +c.dataset.c));
     // összesítés
@@ -572,6 +580,8 @@
     $('#plDetail').innerHTML = `<div class="card"><div class="nm">${PL.cur + 1}. pull · ${pullCount(p)} count</div><div class="sub">${
       Object.entries(agg).map(([n, a]) => `${a.b ? '<b style="color:var(--gold)">' + esc(n) + '</b>' : esc(n)}${a.n > 1 ? ' ×' + a.n : ''}`).join(', ') || 'Üres – koppints mobokra a térképen.'}</div></div>`;
   }
+  $('#plEntr').onclick = () => { const q = (PL.d.poi || []).find(q => q.t === 'dungeonEntrance'); if (!q) return;
+    if ((q.sub || 1) !== PL.sub) { PL.sub = q.sub || 1; drawPlanner(); } centerOn([{ x: q.x, y: -q.y }]); };
   $('#plZoomIn').onclick = () => setZoom(PL.zoom * 1.5);
   $('#plZoomOut').onclick = () => setZoom(PL.zoom / 1.5);
   // két ujjas nagyítás
