@@ -241,7 +241,7 @@
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
       const mode = $('#mode').value;
-      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 6) hm = null;
+      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 7) hm = null;
       if (mode === 'hist' && !hm) throw new Error('Előbb töltsd be az előzményeket (Előzmények betöltése és illesztése), vagy válassz másik kalibrálást.');
       members.forEach(m => { m.key = (m.key || `${m.region}/${m.realmSlug}/${m.name}`).toLowerCase(); });
       setTimeout(() => {
@@ -346,10 +346,14 @@
       const runMap = {};
       for (const m of mem) {
         const d = await getJson(`${RIO}/api/v1/characters/profile?region=${m.region}&realm=${encodeURIComponent(m.realmSlug)}&name=${encodeURIComponent(m.name)}&fields=mythic_plus_recent_runs,mythic_plus_best_runs,mythic_plus_alternate_runs`);
-        for (const r of [].concat(d.mythic_plus_recent_runs || [], d.mythic_plus_best_runs || [], d.mythic_plus_alternate_runs || [])) {
+        const tag = (arr, src) => (arr || []).map(r => [r, src]);
+        for (const [r, src] of [].concat(tag(d.mythic_plus_recent_runs, 'recent'), tag(d.mythic_plus_best_runs, 'best'), tag(d.mythic_plus_alternate_runs, 'best'))) {
           const se = /mythic-plus-runs\/([^/]+)\//.exec(r.url || ''); if (!se) continue;
+          const prev = runMap[r.keystone_run_id];
+          if (prev) { if (src === 'recent') prev.src = 'recent'; continue; }   // ha a friss listában is szerepel, nem válogatott minta
           runMap[r.keystone_run_id] = { id: r.keystone_run_id, season: se[1], mapId: r.map_challenge_mode_id, level: r.mythic_level, time: r.clear_time_ms / 1000,
-            timer: r.par_time_ms / 1000, upgrades: r.num_keystone_upgrades, affixes: (r.affixes || []).map(a => a.name), dungeon: r.dungeon };
+            timer: r.par_time_ms / 1000, upgrades: r.num_keystone_upgrades, affixes: (r.affixes || []).map(a => a.name), dungeon: r.dungeon,
+            src, at: r.completed_at ? Date.parse(r.completed_at) : 0 };
           timers[r.dungeon] = Math.round(r.par_time_ms / 1000);
         }
       }
@@ -384,6 +388,7 @@
     h += `<div class="scroll"><table><thead><tr><th class="l">Játékos</th><th>Futás az adatokban</th></tr></thead><tbody>` +
       mem.map((x, i) => { const e = m.playerEff[keys[i]]; return `<tr><td class="l" style="color:${CLASS_COLOR[x.cls] || '#ccc'}">${esc(x.name)}</td><td>${e ? e.n : 0}</td></tr>`; }).join('') + '</tbody></table></div>';
     h += `<p class="note">${m.together} futásban volt együtt a teljes csapat. Egyéni hatékonyságot nem mutatok: aki minden futásban benne van, annak a hatása nem választható szét a többiekétől – a csapat együttes értéke viszont megbízható.</p>`;
+    if (m.nSel != null) h += `<p class="note">Friss futások nagyobb súllyal (${m.halfLife} nap felezési idő, effektív ${m.nEff.toFixed(1)} futás) · ${m.nRec} friss (lekésettekkel együtt) és ${m.nSel} „legjobb” futás${m.nSel && m.nRec ? ` · a legjobb-listák ${Math.round((1 - Math.exp(m.sel)) * 100)}%-kal gyorsabbak a valós átlagnál, ezt a modell kiszűri` : ''}.</p>`;
     h += `<p class="note">Fix idő ≈ a timer ${Math.round(m.a * 100)}%-a · harcidő-szorzó ×${Math.exp(m.beta).toFixed(2)} · kulcsszintenként ${m.delta >= 0 ? '+' : ''}${(m.delta * 100).toFixed(1)}% idő</p>`;
     h += `<details><summary>Dungeonok fix ideje és a futások</summary><div class="scroll"><table><thead><tr><th class="l">Dungeon</th><th>Fix idő</th></tr></thead><tbody>` +
       Object.entries(m.A).map(([i, a]) => `<tr><td class="l">${esc(DATA.dungeons[i].name)}</td><td>${fmtT(a)}</td></tr>`).join('') + '</tbody></table></div>' +
@@ -417,6 +422,6 @@
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
     loadAffixes();
     $('#mode').value = store.get('mode', 'hist'); syncMode();
-    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 6) renderHist(hm0);
+    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 7) renderHist(hm0);
   })();
 }

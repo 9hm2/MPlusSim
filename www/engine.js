@@ -494,7 +494,7 @@
   //   δ   – kulcsszintenkénti lassulás (halál, óvatosság)       prior 0 ± 0.05
   //   u   – csak a csapattagoké egyéni (prior 0 ± 0.2), minden más játékos közös μ
   function fitHistory(runs, dungeons, table, opt) {
-    opt = Object.assign({ iters: 60 }, opt || {});
+    opt = Object.assign({ iters: 60, halfLifeDays: 42, now: Date.now() }, opt || {});
     const byMap = {}; for (const [idx, d] of Object.entries(dungeons)) if (d.mapID) byMap[d.mapID] = idx;
     const focus = (opt.focus || []).map(k => k.toLowerCase());
     const refCache = {}, obs = [];
@@ -505,15 +505,21 @@
       const C = combatTime(refCache[idx], r.level, mem, table, weekOf(r.affixes));
       if (!(C > 0) || !(r.time > 0)) continue;
       const fi = mem.map(m => focus.indexOf(m.key)).filter(i => i >= 0);
-      obs.push({ r, idx, C, T: r.time, lT: Math.log(r.time), timer: r.timer, level: r.level, fi, nOther: mem.length - fi.length, n: mem.length });
+      // friss futás nagyobb súllyal (felezési idő: halfLifeDays), legjobb-lista futás: válogatott (torzított) minta
+      const age = r.at ? Math.max(0, (opt.now - r.at) / 864e5) : 0;
+      const w = Math.pow(0.5, age / opt.halfLifeDays);
+      obs.push({ r, idx, C, T: r.time, lT: Math.log(r.time), timer: r.timer, level: r.level, fi, nOther: mem.length - fi.length, n: mem.length,
+        w, sel: r.src === 'best' ? 1 : 0 });
     }
     if (obs.length < 3) return { ok: false, n: obs.length, reason: 'Kevés használható futás (legalább 3 kell).' };
     const Dg = [...new Set(obs.map(o => o.idx))];
-    const th = { a: 0.35, beta: 0, delta: 0, mu: 0, mu1: 0, alpha: Object.fromEntries(Dg.map(d => [d, 0])), u: focus.map(() => 0) };
+    const W = obs.reduce((s2, o) => s2 + o.w, 0), nEff = W * W / obs.reduce((s2, o) => s2 + o.w * o.w, 0);
+    const nSel = obs.filter(o => o.sel).length, nRec = obs.length - nSel;
+    const th = { a: 0.35, beta: 0, delta: 0, mu: 0, mu1: 0, sel: 0, alpha: Object.fromEntries(Dg.map(d => [d, 0])), u: focus.map(() => 0) };
     const pred = (o, t = th) => Math.log(t.a * o.timer * Math.exp(t.alpha[o.idx]) + o.C * Math.exp(t.beta + t.delta * (o.level - 10)))
-      + (o.fi.reduce((s2, i) => s2 + t.u[i], 0) + o.nOther * (t.mu + t.mu1 * (o.level - 10))) / o.n;
+      + (o.fi.reduce((s2, i) => s2 + t.u[i], 0) + o.nOther * (t.mu + t.mu1 * (o.level - 10))) / o.n + t.sel * o.sel;
     let sigma = 0.12;
-    const J = () => obs.reduce((s2, o) => s2 + (o.lT - pred(o)) ** 2, 0) / (sigma * sigma)
+    const J = () => obs.reduce((s2, o) => s2 + o.w * (o.lT - pred(o)) ** 2, 0) * (obs.length / W) / (sigma * sigma) + (th.sel / 0.1) ** 2
       + ((th.a - 0.35) / 0.15) ** 2 + (th.beta / 0.5) ** 2 + (th.delta / 0.05) ** 2
       + Object.values(th.alpha).reduce((s2, x) => s2 + (x / 0.15) ** 2, 0) + th.u.reduce((s2, x) => s2 + (x / 0.2) ** 2, 0) + (th.mu / 0.3) ** 2 + (th.mu1 / 0.05) ** 2;
     const golden = (get, set, lo, hi) => { for (let g = 0; g < 40; g++) { const m1 = lo + (hi - lo) * 0.382, m2 = lo + (hi - lo) * 0.618;
@@ -524,20 +530,21 @@
       golden(() => th.delta, v => { th.delta = v; }, 0, 0.2);
       golden(() => th.mu, v => { th.mu = v; }, -1, 1);
       golden(() => th.mu1, v => { th.mu1 = v; }, -0.15, 0);
+      if (nSel && nRec) golden(() => th.sel, v => { th.sel = v; }, -0.3, 0);
       for (const d of Dg) golden(() => th.alpha[d], v => { th.alpha[d] = v; }, -0.6, 0.6);
       for (let i = 0; i < th.u.length; i++) golden(() => th.u[i], v => { th.u[i] = v; }, -1, 1);
       const rs = obs.map(o => o.lT - pred(o));
-      sigma = Math.max(0.04, Math.sqrt(rs.reduce((s2, x) => s2 + x * x, 0) / Math.max(1, obs.length - 4)));
+      sigma = Math.max(0.04, Math.sqrt(obs.reduce((s2, o, j) => s2 + o.w * rs[j] * rs[j], 0) / W * obs.length / Math.max(1, obs.length - 4)));
     }
-    const rs = obs.map(o => o.lT - pred(o)), mean = rs.reduce((s2, x) => s2 + x, 0) / rs.length;
+    const rs = obs.map(o => o.lT - pred(o)), mean = obs.reduce((s2, o, j) => s2 + o.w * rs[j], 0) / W;
     const mae = obs.reduce((s2, o) => s2 + Math.abs(o.T - Math.exp(pred(o))), 0) / obs.length;
     const comfortOf = {};
     obs.forEach(o => { if (o.r.upgrades > 0) o.r.roster.map(memberFromRoster).forEach(m => { comfortOf[m.key] = Math.max(comfortOf[m.key] || 0, o.level); }); });
     const playerEff = {}; focus.forEach((k, i) => { playerEff[k] = { u: th.u[i], n: obs.filter(o => o.fi.includes(i)).length }; });
     const A = {}, timerOf = {}; Dg.forEach(d => { const o = obs.find(x => x.idx === d); timerOf[d] = o.timer; A[d] = th.a * o.timer * Math.exp(th.alpha[d]); });
     const together = obs.filter(o => o.fi.length >= Math.min(5, focus.length) && focus.length).length;
-    return { ok: true, v: 6, n: obs.length, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, mu1: th.mu1, sigma, A, timerOf, playerEff, comfortOf, mae, together,
-      resid: rs.map(x => x - mean), focus,
+    return { ok: true, v: 7, n: obs.length, nEff, nSel, nRec, sel: th.sel, halfLife: opt.halfLifeDays, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, mu1: th.mu1, sigma, A, timerOf, playerEff, comfortOf, mae, together,
+      resid: rs.map(x => x - mean), residW: obs.map(o => o.w), focus,
       runs: obs.map(o => ({ dungeon: dungeons[o.idx].name, level: o.level, T: o.T, pred: Math.exp(pred(o)), timed: o.r.upgrades > 0 })) };
   }
 
@@ -555,6 +562,9 @@
     const cs = keys.map((k, i) => model.comfortOf[k] || members[i].comfort).sort((a, b) => a - b);
     const comfort = cs[Math.floor(cs.length / 2)];
     const res = model.resid && model.resid.length ? model.resid : [0];
+    const rw = model.residW && model.residW.length === res.length ? model.residW : res.map(() => 1);
+    const cum = []; rw.reduce((a, x, i) => (cum[i] = a + x), 0);
+    const pickRes = u => { const t = u * cum[cum.length - 1]; let lo = 0, hi = cum.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (cum[m] < t) lo = m + 1; else hi = m; } return res[lo]; };
     const extraSd = (5 - known) * 0.02 + (model.th.alpha[idx] == null ? 0.06 : 0);
     const r = rngFactory(11);
     const T0 = teamDps(mem, table);
@@ -566,7 +576,7 @@
       const beyond = Math.max(0, L - comfort - 1);            // a csapat által már időben lefutott szint fölött
       const ts = [], N = runs || 3000; let dep = 0;
       for (let i = 0; i < N; i++) {
-        const e = res[Math.floor(r() * res.length)] + normal(r) * extraSd;
+        const e = pickRes(r()) + normal(r) * extraSd;
         let t = pred * Math.exp(0.04 * beyond * beyond + e);
         if (r() < Math.min(0.6, 0.04 * beyond * beyond)) { dep++; t = Infinity; }   // feladott kulcs (a Raider.io nem mutatja)
         ts.push(t);
