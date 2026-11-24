@@ -510,7 +510,7 @@
     if (obs.length < 3) return { ok: false, n: obs.length, reason: 'Kevés használható futás (legalább 3 kell).' };
     const Dg = [...new Set(obs.map(o => o.idx))];
     const th = { a: 0.35, beta: 0, delta: 0, mu: 0, mu1: 0, alpha: Object.fromEntries(Dg.map(d => [d, 0])), u: focus.map(() => 0) };
-    const pred = (o, t = th) => Math.log(t.a * o.timer * Math.exp(t.alpha[o.idx]) + o.C * Math.exp(t.beta)) + t.delta * (o.level - 10)
+    const pred = (o, t = th) => Math.log(t.a * o.timer * Math.exp(t.alpha[o.idx]) + o.C * Math.exp(t.beta + t.delta * (o.level - 10)))
       + (o.fi.reduce((s2, i) => s2 + t.u[i], 0) + o.nOther * (t.mu + t.mu1 * (o.level - 10))) / o.n;
     let sigma = 0.12;
     const J = () => obs.reduce((s2, o) => s2 + (o.lT - pred(o)) ** 2, 0) / (sigma * sigma)
@@ -536,7 +536,7 @@
     const playerEff = {}; focus.forEach((k, i) => { playerEff[k] = { u: th.u[i], n: obs.filter(o => o.fi.includes(i)).length }; });
     const A = {}, timerOf = {}; Dg.forEach(d => { const o = obs.find(x => x.idx === d); timerOf[d] = o.timer; A[d] = th.a * o.timer * Math.exp(th.alpha[d]); });
     const together = obs.filter(o => o.fi.length >= Math.min(5, focus.length) && focus.length).length;
-    return { ok: true, v: 5, n: obs.length, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, mu1: th.mu1, sigma, A, timerOf, playerEff, comfortOf, mae, together,
+    return { ok: true, v: 6, n: obs.length, th, a: th.a, beta: th.beta, delta: th.delta, mu: th.mu, mu1: th.mu1, sigma, A, timerOf, playerEff, comfortOf, mae, together,
       resid: rs.map(x => x - mean), focus,
       runs: obs.map(o => ({ dungeon: dungeons[o.idx].name, level: o.level, T: o.T, pred: Math.exp(pred(o)), timed: o.r.upgrades > 0 })) };
   }
@@ -562,7 +562,7 @@
     const Cm = Math.exp(model.beta);
     const rows = levels.map(L => {
       const C = pulls.reduce((a, p) => a + pullTime(p, L, week, T0), 0);
-      const pred = (A + C * Cm) * Math.exp(model.delta * (L - 10) + uTeamL(L));
+      const pred = (A + C * Cm * Math.exp(model.delta * (L - 10))) * Math.exp(uTeamL(L));   // a szintfüggő lassulás csak a harcot érinti, a fix idő (séta, RP) nem rövidül
       const beyond = Math.max(0, L - comfort - 1);            // a csapat által már időben lefutott szint fölött
       const ts = [], N = runs || 3000; let dep = 0;
       for (let i = 0; i < N; i++) {

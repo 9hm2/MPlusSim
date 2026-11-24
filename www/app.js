@@ -241,7 +241,7 @@
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
       const mode = $('#mode').value;
-      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 5) hm = null;
+      let hm = store.get('histModels', {})[teamKey()]; if (hm && hm.v !== 6) hm = null;
       if (mode === 'hist' && !hm) throw new Error('Előbb töltsd be az előzményeket (Előzmények betöltése és illesztése), vagy válassz másik kalibrálást.');
       members.forEach(m => { m.key = (m.key || `${m.region}/${m.realmSlug}/${m.name}`).toLowerCase(); });
       setTimeout(() => {
@@ -417,6 +417,6 @@
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
     loadAffixes();
     $('#mode').value = store.get('mode', 'hist'); syncMode();
-    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 5) renderHist(hm0);
+    const hm0 = store.get('histModels', {})[teamKey()]; if (hm0 && hm0.v === 6) renderHist(hm0);
   })();
 }
