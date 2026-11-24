@@ -96,8 +96,9 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
     <div><label for="kFrom">Kulcs-tól</label><input id="kFrom" type="number" min="2" max="30" value="2" inputmode="numeric"></div>
     <div><label for="kTo">Kulcs-ig</label><input id="kTo" type="number" min="2" max="30" value="16" inputmode="numeric"></div>
     <div><label for="timer">Timer (pp:mm)</label><input id="timer" placeholder="pl. 32:01"></div>
-    <div><label for="week">Heti affix (+7–9)</label><select id="week"><option value="">Nem tudom (átlag)</option><option value="fortified">Fortified</option><option value="tyrannical">Tyrannical</option></select></div>
+    <div><label for="week">Heti affix (+7–9)</label><select id="week"><option value="">Átlag (ismeretlen)</option><option value="fortified">Fortified</option><option value="tyrannical">Tyrannical</option></select></div>
   </div>
+  <p class="note" id="affixNote"></p>
   <details><summary>Kalibrálás egy valódi futásra (ajánlott)</summary>
     <div class="grid2"><div><label for="calL">Kulcsszint</label><input id="calL" type="number" inputmode="numeric" placeholder="pl. 10"></div>
     <div><label for="calT">Idő (pp:mm)</label><input id="calT" placeholder="pl. 23:17"></div></div>
@@ -109,6 +110,8 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
       <div><label for="pRuns">Monte Carlo futás</label><input id="pRuns" type="number" value="1500" inputmode="numeric"></div>
       <div><label for="pDeath">Halál büntetés (mp)</label><input id="pDeath" type="number" value="15" inputmode="numeric"></div>
       <div><label for="pWalk">Séta pullonként (mp)</label><input id="pWalk" type="number" value="10" inputmode="numeric"></div>
+      <div><label for="pExtra">Véletlen extra pull (%/trash pull)</label><input id="pExtra" type="number" value="8" inputmode="numeric"></div>
+      <div><label for="pBarg">Bargain többletidő +5–11 (%)</label><input id="pBarg" type="number" value="4" inputmode="numeric"></div>
     </div>
   </details>
   <div class="row" style="margin-top:10px"><button id="btnSim" class="grow">Szimuláció futtatása</button></div>

@@ -9,7 +9,9 @@
   const MODEL = {
     scalingNormal: 1.07, scalingExtra: 1.10, extraFrom: 11,
     fortHp: 1.20, tyrHp: 1.25, fortDmg: 1.20, tyrDmg: 1.15, lindormiHp: 0.95, lindormiDmg: 0.95,
-    deathPenalty: 15, chest2: 0.80, chest3: 0.60,
+    deathPenalty: 15, deathPenaltyLow: 5, chest2: 0.80, chest3: 0.60,
+    bargainOverhead: 0.04,            // +5..+11 Xal'atath's Bargain (pl. Voidbound Emissary) többletideje
+    extraPullChance: 0.08, extraPullSize: [0.3, 0.6],  // véletlen extra pull (patrol / ráhúzás) trash pullonként
     walkTrash: 10, walkBoss: 15,
     downtimeTrash: [0.03, 0.10], downtimeBoss: [0.10, 0.25],
     deathRateTrash: 0.04, deathRateBoss: 0.10, deathGrowth: 0.35,
@@ -91,7 +93,7 @@
   const vals = o => Array.isArray(o) ? o : Object.values(o || {});
 
   function buildPulls(route, dungeon) {
-    const E = dungeon.enemies, notes = [];
+    const E = dungeon.enemies, notes = [], used = new Set();
     for (const o of route.objects || []) {
       const d = o && o.d;
       if (d && d.length >= 5 && typeof d[4] === 'string' && /lust|bl\b|hero/i.test(d[4])) notes.push([+d[0], +d[1], +(d[2] || 1)]);
@@ -102,6 +104,7 @@
       for (const [k, cl] of Object.entries(pl)) {
         if (k === 'color' || !E[k]) continue;
         for (const c of vals(cl)) {
+          used.add(k + ':' + Math.round(c));
           mobs.push(E[k]);
           const pos = E[k].cl[String(Math.round(c))];
           if (pos) pts.push(pos);
@@ -118,6 +121,17 @@
       if (pulls[best]) pulls[best].lust = true;
     }
     if (pulls.length && !pulls.some(q => q.lust)) { pulls[0].lust = true; }
+    // hiányzó count pótlása: a fel nem használt trashből a legjobb count/HP arányú mobok egy extra pullban
+    const have = pulls.reduce((a, q) => a + q.count, 0), need = (dungeon.total || 0) - have;
+    if (need > 0) {
+      const cand = [];
+      for (const [k, e] of Object.entries(E)) if (!e.b && e.c > 0 && e.h > 0)
+        for (const ci of Object.keys(e.cl)) if (!used.has(k + ':' + ci)) cand.push(e);
+      cand.sort((a, b) => b.c / b.h - a.c / a.h);
+      const mobs = []; let got = 0;
+      for (const e of cand) { if (got >= need) break; mobs.push(e); got += e.c; }
+      if (mobs.length) pulls.push({ mobs, boss: false, count: got, c: [0, 0, 1], lust: false, extra: true });
+    }
     return pulls;
   }
 
@@ -251,13 +265,16 @@
     const r = rngFactory(seed || 1), M = MODEL;
     const { skill, comfort, risk } = teamFactors(members, L);
     const d = L - comfort, sloppy = 1.3 - skill, nDps = Math.max(1, members.filter(m => m.role !== 'healer').length);
-    const pen = L >= 6 ? M.deathPenalty : 0;
+    const pen = L <= 5 ? 0 : L < 12 ? M.deathPenaltyLow : M.deathPenalty;   // Lindormi: nincs; +12-től Guile: 15 mp
+    const bargain = L >= 5 && L <= 11 ? 1 + M.bargainOverhead : 1;
+    const pExtra = Math.min(0.5, M.extraPullChance * sloppy / 0.4);
     const res = [];
     for (let k = 0; k < runs; k++) {
-      let t = 0, deaths = 0, wipes = 0, dep = false;
+      let t = 0, deaths = 0, wipes = 0, dep = false, extras = 0;
       const form = Math.exp(normal(r) * M.dayFormCv * sloppy / 0.4);
       pulls.forEach((p, i) => {
-        const b = base[i] * eff * form * Math.exp(normal(r) * M.pullCv);
+        let b = base[i] * eff * form * bargain * Math.exp(normal(r) * M.pullCv);
+        if (!p.boss && r() < pExtra) { extras++; b *= 1 + M.extraPullSize[0] + r() * (M.extraPullSize[1] - M.extraPullSize[0]); }
         if (i) t += (p.boss ? M.walkBoss : M.walkTrash) * (1 + 0.6 * (1 - skill));
         const [lo, hi] = p.boss ? M.downtimeBoss : M.downtimeTrash;
         const rate = p.boss ? M.deathRateBoss : M.deathRateTrash;
@@ -276,13 +293,13 @@
         for (let j = 0; j < kd; j++) { deaths++; t += pen; dur *= 1 + (1 / nDps) * (0.1 + 0.5 * r()); }
         t += dur;
       });
-      res.push([t, deaths, wipes, dep]);
+      res.push([t, deaths, wipes, dep, extras]);
     }
     const ts = res.map(x => x[0]).sort((a, b) => a - b), q = f => ts[Math.min(ts.length - 1, Math.floor(f * ts.length))];
     const frac = f => res.filter(f).length / runs, mean = i => res.reduce((a, x) => a + x[i], 0) / runs;
     return { level: L, median: q(0.5), p10: q(0.1), p90: q(0.9),
       pTime: frac(x => x[0] <= timer && !x[3]), p2: frac(x => x[0] <= timer * M.chest2), p3: frac(x => x[0] <= timer * M.chest3),
-      deaths: mean(1), wipes: mean(2), comfort, skill };
+      deaths: mean(1), wipes: mean(2), extras: mean(4), comfort, skill };
   }
 
   function simulate(opts) {

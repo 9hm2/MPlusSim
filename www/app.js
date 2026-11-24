@@ -22,6 +22,7 @@
   const ROLE_HU = { tank: 'Tank', healer: 'Healer', dps: 'DPS' };
 
   let DATA = {};
+  const alertBox = t => { $('#hdr').textContent = t; };
   let team = store.get('team', [null, null, null, null, null]);
   let routes = store.get('routes', []);
   let timers = store.get('timers', {});
@@ -38,7 +39,8 @@
   async function loadChar(region, realm, name, ov) {
     const d = await getJson(profileUrl(region, realm, name));
     const m = E.memberFromRio(d, ov);
-    m.region = region; m.realmSlug = realm;
+    m.region = region; m.realmSlug = realm; m.crawled = d.last_crawled_at || null;
+    if (ov && ov.loadout) m.loadout = ov.loadout;
     m.autoSkill = null;
     return m;
   }
@@ -73,22 +75,31 @@
       <div class="slot"><div class="ava" style="color:${col};border:1px solid ${col}">${esc((m.name || '?')[0])}</div>
         <div><div class="nm" style="color:${col}">${esc(m.name)}</div>
           <div class="sub">${esc(m.realm || m.realmSlug || '')} · ${esc(m.spec)} ${esc(m.cls)} · ${Math.round(m.ilvl)} ilvl · ${Math.round(m.score)} score</div></div>
-        <button class="link" data-del="${i}" aria-label="Eltávolítás">✕</button></div>
+        <div><button class="link" data-ref="${i}" aria-label="Frissítés">⟳</button><button class="link" data-del="${i}" aria-label="Eltávolítás">✕</button></div></div>
       <div class="grid2" style="margin-top:6px">
         <div><label for="sp${i}">Spec</label><select id="sp${i}">${specOpts}</select></div>
         <div><label for="ro${i}">Szerep</label><select id="ro${i}">${['dps', 'tank', 'healer'].map(r => `<option value="${r}" ${r === m.role ? 'selected' : ''}>${ROLE_HU[r]}</option>`).join('')}</select></div>
         <div><label for="sk${i}">Ügyesség: <b id="skv${i}">${Math.round(m.skill * 100)}</b></label><input id="sk${i}" type="range" min="50" max="97" value="${Math.round(m.skill * 100)}"></div>
         <div><label for="cf${i}">Komfort kulcs</label><input id="cf${i}" type="number" inputmode="decimal" value="${(+m.comfort).toFixed(1)}"></div>
       </div>
-      <p class="sub" style="margin:8px 0 0">Tier: ${m.tier} db · ${ench}${m.role !== 'healer' ? ` · felszereltség ${Math.round(m.gearQ * 100)}%` : ''}${m.talents ? '' : ' · talentek: ismeretlen'}</p>
+      <p class="sub" style="margin:8px 0 0">${m.specFrom === 'run' ? 'Spec: a futásból' : m.specFrom === 'manual' ? 'Spec: kézzel állítva' : 'Spec: aktuális (Raider.io)'}${m.crawled ? ' · frissítve ' + esc(new Date(m.crawled).toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })) : ''}<br>Tier: ${m.tier} db · ${ench}${m.role !== 'healer' ? ` · felszereltség ${Math.round(m.gearQ * 100)}%` : ''}${m.talents ? '' : ' · talentek: ismeretlen'}</p>
     </div>`;
   }
   function bindMember(i) {
     const m = team[i];
     $(`[data-del="${i}"]`).onclick = () => { team[i] = null; saveTeam(); renderSlots(); };
-    $(`#sp${i}`).onchange = e => { m.spec = e.target.value; m.role = roleOf(m.cls, m.spec); m.talents = null; saveTeam(); renderSlots(); };
+    $(`[data-ref="${i}"]`).onclick = async e => {
+      e.target.textContent = '…';
+      try {
+        const keep = m.specFrom === 'manual' || m.specFrom === 'run' ? { spec: m.spec, role: m.role, loadout: m.loadout } : null;
+        const n = await loadChar(m.region, m.realmSlug, m.name, keep);
+        n.specFrom = m.specFrom; n.skill = m.skillManual ? m.skill : null; n.skillManual = m.skillManual;
+        team[i] = n; saveTeam(); renderSlots();
+      } catch (err) { e.target.textContent = '⟳'; alertBox(`Frissítési hiba: ${err.message}`); }
+    };
+    $(`#sp${i}`).onchange = e => { m.spec = e.target.value; m.role = roleOf(m.cls, m.spec); m.talents = null; m.specFrom = 'manual'; saveTeam(); renderSlots(); };
     $(`#ro${i}`).onchange = e => { m.role = e.target.value; saveTeam(); };
-    $(`#sk${i}`).oninput = e => { m.skill = +e.target.value / 100; $(`#skv${i}`).textContent = e.target.value; saveTeam(); };
+    $(`#sk${i}`).oninput = e => { m.skill = +e.target.value / 100; m.skillManual = true; $(`#skv${i}`).textContent = e.target.value; saveTeam(); };
     $(`#cf${i}`).onchange = e => { m.comfort = +e.target.value || m.comfort; saveTeam(); };
   }
   function bindEmpty(i) {
@@ -130,7 +141,8 @@
       const out = [];
       for (const r of rd.roster.slice(0, 5)) {
         const c = r.character, tl = c.talentLoadout || {};
-        out.push(await loadChar(c.region.slug, c.realm.slug, c.name, { spec: c.spec.name, role: r.role || c.spec.role, loadout: tl.loadout }));
+        const lm = await loadChar(c.region.slug, c.realm.slug, c.name, { spec: c.spec.name, role: r.role || c.spec.role, loadout: tl.loadout });
+        lm.specFrom = 'run'; out.push(lm);
       }
       out.sort((a, b) => ({ tank: 0, healer: 1, dps: 2 }[a.role] - { tank: 0, healer: 1, dps: 2 }[b.role]));
       team = [0, 1, 2, 3, 4].map(i => out[i] || null);
@@ -224,6 +236,8 @@
       E.MODEL.healerDpsShare = (+$('#pHeal').value || 30) / 100;
       E.MODEL.deathPenalty = +$('#pDeath').value || 15;
       E.MODEL.walkTrash = +$('#pWalk').value || 10; E.MODEL.walkBoss = E.MODEL.walkTrash * 1.5;
+      E.MODEL.extraPullChance = Math.max(0, +$('#pExtra').value || 0) / 100;
+      E.MODEL.bargainOverhead = Math.max(0, +$('#pBarg').value || 0) / 100;
       const calT = parseT($('#calT').value), calL = +$('#calL').value;
       out.innerHTML = '<p class="note"><span class="spin"></span> Számolás…</p>';
       setTimeout(() => {
@@ -238,10 +252,10 @@
     const col = v => v >= 0.85 ? 'var(--ok)' : v >= 0.6 ? 'var(--warn)' : v >= 0.3 ? '#e8884a' : 'var(--bad)';
     let h = `<div class="card"><div class="chips">${chip('Biztos (≥85%)', res.safe)}${chip('Javasolt (≥60%)', res.rec)}${chip('Próbálkozás (≥30%)', res.push)}</div>
       <p class="note" style="margin:8px 0 0">${esc(d.name)} · timer ${fmtT(timer)} · ${cal ? `kalibrálva (hatékonyság ×${res.eff.toFixed(2)})` : 'nincs kalibrálva – becsült hatékonyság'}</p></div>`;
-    h += `<div class="scroll"><table><thead><tr><th>Kulcs</th><th>Medián</th><th>10–90%</th><th>Időben</th><th>+2</th><th>+3</th><th>Halál</th></tr></thead><tbody>` +
+    h += `<div class="scroll"><table><thead><tr><th>Kulcs</th><th>Medián</th><th>10–90%</th><th>Időben</th><th>+2</th><th>+3</th><th>Halál</th><th>Extra pull</th></tr></thead><tbody>` +
       res.rows.map(x => `<tr data-lv="${x.level}"><td><b>+${x.level}</b></td><td>${fmtT(x.median)}</td><td>${fmtT(x.p10)}–${fmtT(x.p90)}</td>
         <td><span style="color:${col(x.pTime)}">${pct(x.pTime)}</span><div class="bar"><i style="width:${x.pTime * 100}%;background:${col(x.pTime)}"></i></div></td>
-        <td>${pct(x.p2)}</td><td>${pct(x.p3)}</td><td>${x.deaths.toFixed(1)}</td></tr>`).join('') + '</tbody></table></div>';
+        <td>${pct(x.p2)}</td><td>${pct(x.p3)}</td><td>${x.deaths.toFixed(1)}</td><td>${x.extras.toFixed(1)}</td></tr>`).join('') + '</tbody></table></div>';
     h += `<p class="note">Koppints egy sorra a pullonkénti bontásért.</p><div id="pullBox"></div>`;
     h += `<h3>Csapat becsült sebzése</h3><div class="scroll"><table><thead><tr><th>Tag</th><th>1 célpont</th><th>5 célpont</th></tr></thead><tbody>` +
       members.map(m => `<tr><td style="color:${CLASS_COLOR[m.cls] || '#ccc'}">${esc(m.name)} <span class="sub">${esc(m.spec)}</span></td><td>${Math.round(m.estDps.st / 1000)}k</td><td>${Math.round(m.estDps.aoe / 1000)}k</td></tr>`).join('') +
@@ -251,8 +265,8 @@
     $('#simOut').querySelectorAll('tr[data-lv]').forEach(tr => tr.onclick = () => {
       const x = res.rows.find(q => q.level === +tr.dataset.lv);
       $('#pullBox').innerHTML = `<h3>+${x.level} pullonként (tiszta harcidő, kalibrálás és emberi tényező nélkül)</h3><div class="scroll"><table><thead><tr><th>Pull</th><th class="l">Mobok</th><th>Count</th><th>Idő</th></tr></thead><tbody>` +
-        pulls.map((p, i) => `<tr><td>${i + 1}${p.lust ? ' ⚡' : ''}</td><td class="l">${esc([...new Set(p.mobs.map(m => m.n))].join(', '))}</td><td>${p.count}</td><td>${fmtT(x.pulls[i])}</td></tr>`).join('') +
-        `</tbody></table></div><p class="note">⚡ = lust (az MDT jegyzetből, vagy az első pull).</p>`;
+        pulls.map((p, i) => `<tr><td>${p.extra ? '＋' : i + 1}${p.lust ? ' ⚡' : ''}</td><td class="l">${esc([...new Set(p.mobs.map(m => m.n))].join(', '))}</td><td>${p.count}</td><td>${fmtT(x.pulls[i])}</td></tr>`).join('') +
+        `</tbody></table></div><p class="note">⚡ = lust (az MDT jegyzetből, vagy az első pull). ＋ = a route-ból hiányzó count pótlása (automatikus extra pull).</p>`;
       $('#pullBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -298,6 +312,19 @@
     } catch (e) { out.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
   };
 
+  // heti affixok a Raider.io-ról: a +7-es affix az, amelyik előbb szerepel a listában
+  async function loadAffixes() {
+    try {
+      const d = await getJson(`${RIO}/api/v1/mythic-plus/affixes?region=${$('#region').value}&locale=en`);
+      const names = (d.affix_details || []).map(a => a.name);
+      const fi = names.indexOf('Fortified'), ti = names.indexOf('Tyrannical');
+      const first = fi < 0 ? 'tyrannical' : ti < 0 ? 'fortified' : (ti < fi ? 'tyrannical' : 'fortified');
+      if (fi >= 0 || ti >= 0) $('#week').value = first;
+      const bargain = names.find(n => n.startsWith("Xal'atath's Bargain")) || '';
+      $('#affixNote').textContent = `Ezen a héten (${$('#region').value.toUpperCase()}): ${names.join(', ')}. A +7–9 affix: ${first === 'tyrannical' ? 'Tyrannical' : 'Fortified'}${bargain ? '; +5–11: ' + bargain.replace("Xal'atath's Bargain: ", 'Bargain: ') : ''}.`;
+    } catch (e) { $('#affixNote').textContent = 'A heti affixokat nem sikerült lekérni – válaszd ki kézzel.'; }
+  }
+
   // ------------------------------------------------ indulás
   (async () => {
     try {
@@ -305,7 +332,8 @@
       DATA = { dungeons, dps, kits, spells };
     } catch (e) { $('#hdr').textContent = 'Adatbetöltési hiba: ' + e.message; }
     $('#region').value = store.get('region', 'eu');
-    $('#region').onchange = e => store.set('region', e.target.value);
+    $('#region').onchange = e => { store.set('region', e.target.value); loadAffixes(); };
     renderTeamSel(); renderSlots(); renderRoutes(); fillRouteSelects();
+    loadAffixes();
   })();
 }
