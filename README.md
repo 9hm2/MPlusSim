@@ -17,3 +17,6 @@ Mythic+ csapat-szimulátor: Raider.io karakterek + MDT route + kulcsszint → be
 
 ## Fordítás
 GitHub Actions (`.github/workflows/android.yml`): Capacitor 8, JDK 21 → debug APK, Release-be töltve.
+
+## Térképek
+A pull-tervező dungeon-térképei a [Mythic Dungeon Tools](https://github.com/Nnoggie/MythicDungeonTools) (GPL-2.0) csempéiből vannak összefűzve.

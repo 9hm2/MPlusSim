@@ -22,7 +22,7 @@ h2{font-size:17px;margin:18px 0 8px}h3{font-size:15px;margin:14px 0 6px;color:va
 .grow{flex:1}
 label{font-size:13px;color:var(--mute);display:block;margin:8px 0 4px}
 input,select,textarea,button{font:inherit;font-size:16px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:44px}
-#plMap{height:52vh;overflow:auto;background:#0b0e12;border:1px solid var(--line);border-radius:12px;margin-top:8px;touch-action:pan-x pan-y}
+#plMap{height:58vh;overflow:auto;background:#0b0e12;border:1px solid var(--line);border-radius:12px;margin-top:8px;touch-action:pan-x pan-y;-webkit-user-select:none;user-select:none}
 #plMap svg{display:block}
 .plbar{position:relative;height:22px;background:var(--panel2);border-radius:8px;overflow:hidden;margin-top:8px}
 #plFill{height:100%;background:var(--ok);width:0}
@@ -112,6 +112,7 @@ details summary{cursor:pointer;color:var(--blue);padding:6px 0}
     <span class="grow"></span>
     <button class="sec" id="plAdd">+ Pull</button><button class="sec" id="plDel">Pull törlése</button>
   </div>
+  <div class="chips" id="plSubs" style="margin-top:8px"></div>
   <div id="plMap"></div>
   <p class="note" id="plInfo">Koppints egy mobcsoportra: a kijelölt pullhoz kerül, újabb koppintásra kikerül.</p>
   <div class="chips" id="plPulls"></div>

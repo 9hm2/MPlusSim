@@ -454,7 +454,7 @@
     const ds = Object.entries(DATA.dungeons || {}).sort((a, b) => a[1].name.localeCompare(b[1].name));
     $('#planDg').innerHTML = ds.map(([i, d]) => `<option value="${i}">${esc(d.name)}</option>`).join('');
   }
-  const PL = { zoom: 2 };
+  const PL = { zoom: 3 };
   function openPlanner(route, idx) {
     let preset;
     if (route) { preset = E.decodeRoute(route.str); idx = preset.value.currentDungeonIdx; }
@@ -496,36 +496,66 @@
     $('#plInfo').textContent = `${inCur ? 'Kivéve' : 'Hozzáadva a(z) ' + (PL.cur + 1) + '. pullhoz'}: ${Object.entries(names).map(([n, k]) => k > 1 ? `${n} ×${k}` : n).join(', ')} (${cnt} count)`;
     drawPlanner();
   }
+  const MAP_W = 840, MAP_H = 560;   // MDT térképkeret (15×10 csempe, 56 egység/csempe)
+  function svgPx() { return (($('#plMap').clientWidth || 360) - 2) * PL.zoom; }
+  function setZoom(z, fx, fy) {     // fx, fy: fókuszpont a dobozon belül (px)
+    const box = $('#plMap'), svg = box.querySelector('svg'); if (!svg) return;
+    z = Math.max(1, Math.min(8, z)); const old = svgPx(); PL.zoom = z; const nw = svgPx(), k = nw / old;
+    fx = fx == null ? box.clientWidth / 2 : fx; fy = fy == null ? box.clientHeight / 2 : fy;
+    const sx = (box.scrollLeft + fx) * k - fx, sy = (box.scrollTop + fy) * k - fy;
+    svg.setAttribute('width', nw); svg.setAttribute('height', nw * MAP_H / MAP_W);
+    box.style.height = Math.min(window.innerHeight * 0.58, nw * MAP_H / MAP_W + 2) + 'px';
+    box.scrollLeft = sx; box.scrollTop = sy;
+  }
+  function centerOn(pts) {
+    if (!pts.length) return;
+    const box = $('#plMap'), k = svgPx() / MAP_W;
+    const cx = pts.reduce((a, m) => a + m.x, 0) / pts.length, cy = pts.reduce((a, m) => a + m.y, 0) / pts.length;
+    box.scrollLeft = cx * k - box.clientWidth / 2; box.scrollTop = cy * k - box.clientHeight / 2;
+  }
   function drawPlanner(fit) {
     const { d, pulls, mobs } = PL, total = d.total || 1;
+    const subs = [...new Set(mobs.map(m => m.sub))].sort((a, b) => a - b);
+    $('#plSubs').innerHTML = subs.length > 1 ? subs.map(sb => `<span class="chip pl${sb === PL.sub ? ' on' : ''}" data-sub="${sb}">${esc((d.subNames || {})[sb] || sb + '. szint')}</span>`).join('') : '';
+    document.querySelectorAll('#plSubs [data-sub]').forEach(c => c.onclick = () => { PL.sub = +c.dataset.sub; drawPlanner(true); });
     const vis = mobs.filter(m => m.sub === PL.sub);
-    const xs = vis.map(m => m.x), ys = vis.map(m => m.y), pad = 25;
-    const x0 = Math.min(...xs) - pad, y0 = Math.min(...ys) - pad, w = Math.max(...xs) - x0 + pad, h = Math.max(...ys) - y0 + pad;
-    const box = $('#plMap'), cw = box.clientWidth || 360, sx = box.scrollLeft, sy = box.scrollTop, oldW = box.scrollWidth || 1;
-    const pxW = cw * PL.zoom, pxH = pxW * h / w;
-    let svg = `<svg width="${pxW}" height="${pxH}" viewBox="${x0} ${y0} ${w} ${h}" xmlns="http://www.w3.org/2000/svg">`;
-    // packok halvány körvonala
+    const box = $('#plMap'), sx = box.scrollLeft, sy = box.scrollTop;
+    const pxW = svgPx(), pxH = pxW * MAP_H / MAP_W;
+    let svg = `<svg width="${pxW}" height="${pxH}" viewBox="0 0 ${MAP_W} ${MAP_H}" xmlns="http://www.w3.org/2000/svg">`
+      + `<image href="maps/${PL.idx}_${PL.sub}.webp" x="0" y="0" width="${MAP_W}" height="${MAP_H}" preserveAspectRatio="none"/>`;
+    // packok körvonala
     for (const [g, mem] of Object.entries(PL.groups)) {
       if (g[0] !== 'g') continue;
       const pts = mem.map(([ei, ci]) => mobs.find(m => m.ei === ei && m.ci === ci)).filter(m => m && m.sub === PL.sub);
       if (pts.length < 2) continue;
       const cx = pts.reduce((a, m) => a + m.x, 0) / pts.length, cy = pts.reduce((a, m) => a + m.y, 0) / pts.length;
-      const r = Math.max(...pts.map(m => Math.hypot(m.x - cx, m.y - cy))) + 9;
-      svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#ffffff08" stroke="#ffffff22" stroke-width="1"/>`;
+      const r = Math.max(...pts.map(m => Math.hypot(m.x - cx, m.y - cy))) + 6;
+      const pi = pullOf(pts[0].ei, pts[0].ci);
+      svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${pi >= 0 ? '#' + pulls[pi].color + '30' : '#00000030'}" stroke="${pi >= 0 ? '#' + pulls[pi].color : '#ffffffaa'}" stroke-width="${pi === PL.cur ? 1.6 : 0.8}"/>`;
     }
     for (const m of vis) {
-      const pi = pullOf(m.ei, m.ci), col = pi >= 0 ? '#' + pulls[pi].color : '#5a6270';
-      const r = m.e.b ? 9 : 3.5 + Math.min(3.5, (m.e.c || 0) * 0.7), cur = pi === PL.cur && pi >= 0;
-      const stroke = cur ? '#ffffff' : m.e.b ? '#e8b64a' : '#0b0e12', sw = cur ? 2 : m.e.b ? 2 : 1;
-      svg += m.e.b ? `<rect x="${m.x - r}" y="${m.y - r}" width="${2 * r}" height="${2 * r}" rx="3" fill="${col}" stroke="${stroke}" stroke-width="${sw}"/>`
+      const pi = pullOf(m.ei, m.ci), col = pi >= 0 ? '#' + pulls[pi].color : '#c9ccd1';
+      const r = m.e.b ? 6 : 2.2 + Math.min(2.5, (m.e.c || 0) * 0.5), cur = pi === PL.cur && pi >= 0;
+      const stroke = cur ? '#ffffff' : m.e.b ? '#e8b64a' : '#000', sw = cur ? 1.2 : m.e.b ? 1.5 : 0.7;
+      svg += m.e.b ? `<rect x="${m.x - r}" y="${m.y - r}" width="${2 * r}" height="${2 * r}" rx="2" fill="${col}" stroke="${stroke}" stroke-width="${sw}"/>`
         : `<circle cx="${m.x}" cy="${m.y}" r="${r}" fill="${col}" stroke="${stroke}" stroke-width="${sw}"${m.e.skip ? ' fill-opacity=".35"' : ''}/>`;
-      if (pi >= 0 && m.e.b) svg += `<text x="${m.x}" y="${m.y + 3.5}" font-size="10" text-anchor="middle" fill="#000" font-weight="700">${pi + 1}</text>`;
-      svg += `<circle cx="${m.x}" cy="${m.y}" r="12" fill="transparent" data-e="${m.ei}" data-c="${m.ci}"/>`;
+      if (pi >= 0 && m.e.b) svg += `<text x="${m.x}" y="${m.y + 2.6}" font-size="7" text-anchor="middle" fill="#000" font-weight="700">${pi + 1}</text>`;
     }
+    // pullszámok a csoportok fölé
+    pulls.forEach((p, i) => {
+      const pts = []; for (const [ei, cs] of Object.entries(p.sel)) for (const ci of cs) { const m = mobs.find(x => x.ei === ei && x.ci === ci); if (m && m.sub === PL.sub && !m.e.b) pts.push(m); }
+      if (!pts.length) return;
+      const cx = pts.reduce((a, m) => a + m.x, 0) / pts.length, cy = Math.min(...pts.map(m => m.y)) - 7;
+      svg += `<text x="${cx}" y="${cy}" font-size="9" text-anchor="middle" fill="#fff" stroke="#000" stroke-width="2.5" paint-order="stroke" font-weight="700">${i + 1}</text>`;
+    });
+    for (const m of vis) svg += `<circle cx="${m.x}" cy="${m.y}" r="${m.e.b ? 9 : 6}" fill="transparent" data-e="${m.ei}" data-c="${m.ci}"/>`;
     svg += '</svg>';
     box.innerHTML = svg;
-    if (fit) { box.scrollLeft = (pxW - cw) / 2; box.scrollTop = 0; }
-    else { const k = pxW / oldW; box.scrollLeft = sx * k; box.scrollTop = sy * k; }
+    box.style.height = Math.min(window.innerHeight * 0.58, pxH + 2) + 'px';
+    if (fit) {
+      const cur = []; for (const [ei, cs] of Object.entries(pulls[PL.cur].sel)) for (const ci of cs) { const m = vis.find(x => x.ei === ei && x.ci === ci); if (m) cur.push(m); }
+      centerOn(cur.length ? cur : vis.slice(0, 8));
+    } else { box.scrollLeft = sx; box.scrollTop = sy; }
     box.querySelectorAll('[data-e]').forEach(c => c.onclick = () => toggle(c.dataset.e, +c.dataset.c));
     // összesítés
     const sum = pulls.reduce((a, p) => a + pullCount(p), 0);
@@ -535,14 +565,22 @@
     let acc = 0;
     $('#plPulls').innerHTML = pulls.map((p, i) => { const c = pullCount(p); acc += c;
       return `<span class="chip pl${i === PL.cur ? ' on' : ''}" data-p="${i}" style="border-color:#${p.color}"><b>${i + 1}</b> ${(c / total * 100).toFixed(1)}% <span class="sub">(${(acc / total * 100).toFixed(0)}%)</span></span>`; }).join('');
-    document.querySelectorAll('#plPulls [data-p]').forEach(c => c.onclick = () => { PL.cur = +c.dataset.p; drawPlanner(); });
+    document.querySelectorAll('#plPulls [data-p]').forEach(c => c.onclick = () => { PL.cur = +c.dataset.p;
+      const ps = PL.pulls[PL.cur].sel, ms = PL.mobs.filter(m => ps[m.ei] && ps[m.ei].includes(m.ci)); if (ms.length && ms[0].sub !== PL.sub) PL.sub = ms[0].sub; drawPlanner(ms.length > 0); });
     const p = pulls[PL.cur], agg = {};
     for (const [ei, cs] of Object.entries(p.sel)) { const e = d.enemies[ei]; agg[e.n] = agg[e.n] || { n: 0, c: 0, b: e.b }; agg[e.n].n += cs.length; agg[e.n].c += (e.c || 0) * cs.length; }
     $('#plDetail').innerHTML = `<div class="card"><div class="nm">${PL.cur + 1}. pull · ${pullCount(p)} count</div><div class="sub">${
       Object.entries(agg).map(([n, a]) => `${a.b ? '<b style="color:var(--gold)">' + esc(n) + '</b>' : esc(n)}${a.n > 1 ? ' ×' + a.n : ''}`).join(', ') || 'Üres – koppints mobokra a térképen.'}</div></div>`;
   }
-  $('#plZoomIn').onclick = () => { PL.zoom = Math.min(6, PL.zoom * 1.5); drawPlanner(); };
-  $('#plZoomOut').onclick = () => { PL.zoom = Math.max(1, PL.zoom / 1.5); drawPlanner(); };
+  $('#plZoomIn').onclick = () => setZoom(PL.zoom * 1.5);
+  $('#plZoomOut').onclick = () => setZoom(PL.zoom / 1.5);
+  // két ujjas nagyítás
+  { const box = $('#plMap'); let p0 = null;
+    const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    box.addEventListener('touchstart', e => { if (e.touches.length === 2) { const r = box.getBoundingClientRect();
+      p0 = { d: dist(e.touches), z: PL.zoom, fx: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left, fy: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top }; } }, { passive: true });
+    box.addEventListener('touchmove', e => { if (p0 && e.touches.length === 2) { e.preventDefault(); setZoom(p0.z * dist(e.touches) / p0.d, p0.fx, p0.fy); } }, { passive: false });
+    box.addEventListener('touchend', e => { if (e.touches.length < 2) p0 = null; }); }
   $('#plAdd').onclick = () => { PL.pulls.splice(PL.cur + 1, 0, { color: E.PULL_COLORS[(PL.cur + 1) % E.PULL_COLORS.length], sel: {} }); PL.cur++; drawPlanner(); };
   $('#plDel').onclick = () => {
     if (PL.pulls.length === 1) { PL.pulls[0].sel = {}; drawPlanner(); return; }
